@@ -1,0 +1,8 @@
+{
+  "name": "Guest Wi-Fi (два шага)",
+  "lang": "en",
+  "title": "Wi-Fi — network access",
+  "steps": ["index.html", "password.html"],
+  "fields": ["password"],
+  "vendor": "generic"
+}

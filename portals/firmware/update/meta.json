@@ -1,0 +1,8 @@
+{
+  "name": "Обновление прошивки",
+  "lang": "ru",
+  "title": "Роутер — обновление прошивки",
+  "steps": ["index.html"],
+  "fields": ["password"],
+  "vendor": "firmware"
+}

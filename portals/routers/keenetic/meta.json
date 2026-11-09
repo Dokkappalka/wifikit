@@ -1,0 +1,8 @@
+{
+  "name": "Роутер Keenetic",
+  "lang": "ru",
+  "title": "Keenetic — подключение к сети",
+  "steps": ["index.html"],
+  "fields": ["password"],
+  "vendor": "keenetic"
+}

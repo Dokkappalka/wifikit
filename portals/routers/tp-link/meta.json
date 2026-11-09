@@ -1,0 +1,8 @@
+{
+  "name": "Роутер TP-Link",
+  "lang": "ru",
+  "title": "TP-Link — вход в беспроводную сеть",
+  "steps": ["index.html"],
+  "fields": ["password"],
+  "vendor": "tp-link"
+}

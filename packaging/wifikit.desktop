@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=wifikit
+Comment=Аудит Wi-Fi: захват рукопожатий, брутфорс, злой двойник
+Exec=wifikit
+Icon=network-wireless
+Terminal=false
+Categories=Network;Security;
+Keywords=wifi;wpa;handshake;audit;

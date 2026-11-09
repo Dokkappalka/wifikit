@@ -1,0 +1,8 @@
+{
+  "name": "Hotel Guest Wi-Fi",
+  "lang": "en",
+  "title": "Hotel Wi-Fi — guest sign in",
+  "steps": ["index.html"],
+  "fields": ["room", "surname", "password"],
+  "vendor": "hotel"
+}

@@ -1,0 +1,209 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="dark">
+<title>{{TITLE}}</title>
+<style>
+  :root{
+    --accent:#e9b44c;--accent-d:#f0c46a;--ink:#eef0f4;--muted:#9aa2b1;
+    --bg:#14161c;--card:#1c1f27;--line:#2c313c;--bad:#f08a80;--ok:#63c58a;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0}
+  body{
+    min-height:100dvh;display:flex;align-items:center;justify-content:center;padding:26px 16px;
+    background:var(--bg);color:var(--ink);
+    font:16px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+    -webkit-text-size-adjust:100%;
+  }
+  .card{width:100%;max-width:392px;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:26px 22px 22px}
+  .brand{display:flex;align-items:center;gap:11px;margin-bottom:22px}
+  .brand svg{display:block;flex:none}
+  .brand b{font-size:12px;font-weight:600;letter-spacing:2.4px;text-transform:uppercase;color:var(--accent)}
+  h1{margin:0 0 6px;font-size:24px;line-height:1.2;font-weight:600;letter-spacing:-.2px}
+  .sub{margin:0 0 22px;font-size:14px;color:var(--muted)}
+  .sub b{color:var(--ink);font-weight:500;word-break:break-word}
+  label{display:block;font-size:12.5px;font-weight:600;letter-spacing:.2px;color:#c3cad6;margin:0 0 7px}
+  .field + .field{margin-top:14px}
+  input{
+    display:block;width:100%;height:48px;padding:0 13px;font-size:16px;color:var(--ink);
+    background:#15181f;border:1px solid var(--line);border-radius:10px;outline:none;
+    transition:border-color .15s,box-shadow .15s;
+  }
+  input::placeholder{color:#6d7583}
+  input:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(233,180,76,.16)}
+  input[aria-invalid="true"]{border-color:var(--bad)}
+  .err{margin:5px 0 0;min-height:15px;font-size:12.5px;color:var(--bad)}
+  button{
+    width:100%;min-height:48px;margin-top:18px;display:inline-flex;align-items:center;justify-content:center;gap:9px;
+    font:600 16px/1 inherit;color:#1a1405;background:var(--accent);border:0;border-radius:10px;cursor:pointer;
+    transition:background .15s,opacity .15s;
+  }
+  button:hover{background:var(--accent-d)}
+  button:disabled{opacity:.7;cursor:default}
+  .spin{
+    width:16px;height:16px;border:2px solid rgba(26,20,5,.35);border-top-color:#1a1405;border-radius:50%;
+    display:none;animation:r .7s linear infinite;
+  }
+  button.busy .spin{display:block}
+  @keyframes r{to{transform:rotate(360deg)}}
+  .note{margin:14px 0 0;min-height:18px;font-size:13px;color:var(--muted);text-align:center}
+  .note.bad{color:var(--bad);font-weight:600}
+  .fine{margin:16px 0 0;font-size:11.5px;line-height:1.5;color:#7d8595}
+  .done{text-align:center;padding:14px 0 10px}
+  .done svg{display:block;margin:0 auto 16px}
+  .done h2{margin:0 0 8px;font-size:21px}
+  .done p{margin:0;font-size:14px;color:var(--muted)}
+  [hidden]{display:none!important}
+</style>
+</head>
+<body>
+<main class="card">
+  <div class="brand">
+    <svg width="26" height="26" viewBox="0 0 26 26" aria-hidden="true">
+      <path d="M3.5 9.4c5.2-4.6 13.8-4.6 19 0" fill="none" stroke="#e9b44c" stroke-width="2.2" stroke-linecap="round"/>
+      <path d="M7.4 13.7c3.2-2.8 8-2.8 11.2 0" fill="none" stroke="#e9b44c" stroke-width="2.2" stroke-linecap="round"/>
+      <path d="M11.2 17.9c1.1-1 2.5-1 3.6 0" fill="none" stroke="#e9b44c" stroke-width="2.2" stroke-linecap="round"/>
+      <circle cx="13" cy="21.3" r="1.3" fill="#e9b44c"/>
+    </svg>
+    <b>Free Wi-Fi</b>
+  </div>
+
+  <h1>Гостевой доступ в интернет</h1>
+  <p class="sub">Сеть <b>{{SSID}}</b>. Заполните поля — доступ откроется сразу после проверки.</p>
+
+  <form id="f" novalidate autocomplete="off">
+    <div class="field">
+      <label for="name">Имя</label>
+      <input id="name" name="name" type="text" placeholder="Как к вам обращаться"
+             autocomplete="given-name" aria-describedby="e-name">
+      <p class="err" id="e-name" aria-live="polite"></p>
+    </div>
+    <div class="field">
+      <label for="phone">Телефон</label>
+      <input id="phone" name="phone" type="tel" inputmode="tel" placeholder="+7 900 000-00-00"
+             autocomplete="tel" aria-describedby="e-phone">
+      <p class="err" id="e-phone" aria-live="polite"></p>
+    </div>
+    <div class="field">
+      <label for="password">Пароль из меню</label>
+      <input id="password" name="password" type="password" placeholder="Указан на чеке"
+             spellcheck="false" autocapitalize="none" autocomplete="off" aria-describedby="e-password">
+      <p class="err" id="e-password" aria-live="polite"></p>
+    </div>
+    <button id="go" type="submit"><span class="spin" aria-hidden="true"></span><span class="lbl">Подключиться</span></button>
+  </form>
+
+  <p class="note" id="note" role="status" aria-live="polite"></p>
+  <p class="fine" id="fine">Подключаясь, вы соглашаетесь с правилами гостевой сети. Данные используются только для доступа.</p>
+
+  <section class="done" id="done" hidden>
+    <svg width="46" height="46" viewBox="0 0 46 46" aria-hidden="true">
+      <circle cx="23" cy="23" r="22" fill="#1c2b23"/>
+      <path d="M15 23.5l5.6 5.6L31.5 18" fill="none" stroke="#63c58a" stroke-width="2.6"
+            stroke-linecap="round" stroke-linejoin="round"/>
+    </svg>
+    <h2>Доступ открыт</h2>
+    <p>Сеть <b>{{SSID}}</b> — подключено. Окно можно закрыть и вернуться к столу.</p>
+  </section>
+</main>
+
+<script>
+(function () {
+  var form = document.getElementById('f');
+  var btn = document.getElementById('go');
+  var label = btn.querySelector('.lbl');
+  var note = document.getElementById('note');
+  var done = document.getElementById('done');
+  var fine = document.getElementById('fine');
+  var head = document.querySelector('h1');
+  var sub = document.querySelector('.sub');
+  var busy = false;
+  var timer = 0;
+
+  function setError(id, msg) {
+    var box = document.getElementById('e-' + id);
+    var field = document.getElementById(id);
+    box.textContent = msg || '';
+    field.setAttribute('aria-invalid', msg ? 'true' : 'false');
+  }
+
+  function state(bad, text) {
+    note.textContent = text || '';
+    note.className = 'note' + (bad ? ' bad' : '');
+  }
+
+  function setBusy(on) {
+    busy = on;
+    btn.disabled = on;
+    btn.classList.toggle('busy', on);
+    label.textContent = on ? 'Проверяем…' : 'Подключиться';
+  }
+
+  function validate(data) {
+    var first = null;
+    [
+      ['name', data.name.trim() ? '' : 'Укажите имя'],
+      ['phone', data.phone.replace(/\D/g, '').length >= 10 ? '' : 'Введите телефон целиком'],
+      ['password', data.password.trim() ? '' : 'Введите пароль из меню']
+    ].forEach(function (pair) {
+      setError(pair[0], pair[1]);
+      if (pair[1] && !first) first = pair[0];
+    });
+    return first;
+  }
+
+  form.addEventListener('submit', function (ev) {
+    ev.preventDefault();
+    if (busy) return;
+    clearTimeout(timer);
+    var data = {};
+    new FormData(form).forEach(function (v, k) { data[k] = String(v); });
+
+    var bad = validate(data);
+    if (bad) { document.getElementById(bad).focus(); return; }
+    state(false, '');
+    setBusy(true);
+
+    fetch('{{ACTION}}', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data)
+    })
+      .then(function (r) { return r.json(); })
+      .then(function (res) {
+        var verdict = (res && res.verdict) || 'pending';
+        if (verdict === 'ok') {
+          form.hidden = true;
+          fine.hidden = true;
+          head.hidden = true;
+          sub.hidden = true;
+          state(false, '');
+          done.hidden = false;
+          return;
+        }
+        if (verdict === 'retry') {
+          setBusy(false);
+          state(true, 'Пароль не подошёл. Проверьте его на чеке и попробуйте снова.');
+          document.getElementById('password').select();
+          return;
+        }
+        state(false, 'Проверяем данные, переподключение…');
+        timer = setTimeout(function () {
+          setBusy(false);
+          state(false, 'Если доступ не открылся, отправьте форму ещё раз.');
+        }, 4000);
+      })
+      .catch(function () {
+        setBusy(false);
+        state(true, 'Сеть не ответила. Попробуйте ещё раз.');
+      });
+  });
+
+  document.getElementById('name').focus({ preventScroll: true });
+})();
+</script>
+</body>
+</html>

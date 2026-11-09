@@ -1,0 +1,213 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light">
+<title>{{TITLE}}</title>
+<style>
+  :root{
+    --accent:#8a6a3c;--accent-d:#735730;--ink:#1d1b18;--muted:#77716a;
+    --bg:#f6f2ec;--card:#fff;--line:#e3dbd0;--bad:#b23a2c;--ok:#3f7a4f;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0}
+  body{
+    min-height:100dvh;display:flex;align-items:center;justify-content:center;padding:26px 16px;
+    background:var(--bg);color:var(--ink);
+    font:16px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+    -webkit-text-size-adjust:100%;
+  }
+  .card{width:100%;max-width:396px;background:var(--card);border:1px solid var(--line);border-radius:12px;overflow:hidden}
+  .top{padding:20px 24px;display:flex;align-items:center;gap:11px;border-bottom:1px solid var(--line);background:#fbf8f4}
+  .top svg{display:block;flex:none}
+  .top b{font-size:14px;font-weight:600;letter-spacing:.9px;text-transform:uppercase}
+  .desk{margin-left:auto;font-size:11.5px;color:var(--muted);text-align:right;line-height:1.35}
+  .body{padding:22px 24px 24px}
+  h1{margin:0 0 6px;font-size:21px;line-height:1.25;font-weight:600;letter-spacing:-.1px}
+  .sub{margin:0 0 20px;font-size:14px;color:var(--muted)}
+  .sub b{color:var(--ink);font-weight:600;word-break:break-word}
+  .row{display:flex;gap:12px}
+  .row > .field:first-child{flex:0 0 34%}
+  .row > .field:last-child{flex:1 1 auto;min-width:0}
+  .field + .field{margin-top:14px}
+  .row .field + .field{margin-top:0}
+  label{display:block;font-size:12.5px;font-weight:600;color:#4c463f;margin-bottom:7px}
+  input{
+    display:block;width:100%;height:48px;padding:0 13px;font-size:16px;color:var(--ink);
+    background:#fff;border:1px solid var(--line);border-radius:10px;outline:none;
+    transition:border-color .15s,box-shadow .15s;
+  }
+  input::placeholder{color:#a9a29a}
+  input:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(138,106,60,.14)}
+  input[aria-invalid="true"]{border-color:var(--bad)}
+  .err{margin:5px 0 0;min-height:15px;font-size:12.5px;color:var(--bad)}
+  button{
+    width:100%;min-height:48px;margin-top:18px;display:inline-flex;align-items:center;justify-content:center;gap:9px;
+    font:600 16px/1 inherit;color:#fff;background:var(--accent);border:0;border-radius:10px;cursor:pointer;
+    transition:background .15s,opacity .15s;
+  }
+  button:hover{background:var(--accent-d)}
+  button:disabled{opacity:.72;cursor:default}
+  .spin{
+    width:16px;height:16px;border:2px solid rgba(255,255,255,.45);border-top-color:#fff;border-radius:50%;
+    display:none;animation:r .7s linear infinite;
+  }
+  button.busy .spin{display:block}
+  @keyframes r{to{transform:rotate(360deg)}}
+  .note{margin:14px 0 0;min-height:18px;font-size:13px;color:var(--muted);text-align:center}
+  .note.bad{color:var(--bad);font-weight:600}
+  .fine{margin:16px 0 0;font-size:11.5px;line-height:1.55;color:#8d867e}
+  .done{text-align:center;padding:16px 24px 26px}
+  .done svg{display:block;margin:0 auto 14px}
+  .done h2{margin:0 0 8px;font-size:20px}
+  .done p{margin:0;font-size:14px;color:var(--muted)}
+  [hidden]{display:none!important}
+</style>
+</head>
+<body>
+<main class="card">
+  <div class="top">
+    <svg width="24" height="24" viewBox="0 0 24 24" aria-hidden="true">
+      <rect x="3.5" y="9" width="17" height="11.5" rx="1.2" fill="none" stroke="#8a6a3c" stroke-width="1.9"/>
+      <path d="M6.5 9V5.5h11V9" fill="none" stroke="#8a6a3c" stroke-width="1.9"/>
+      <path d="M6.5 15.5h11M6.5 12.5h4M13.5 12.5h4" stroke="#8a6a3c" stroke-width="1.4"/>
+    </svg>
+    <b>The Wren Hotel</b>
+    <span class="desk">Front desk<br>dial 0</span>
+  </div>
+
+  <div class="body">
+    <h1>Guest Wi-Fi sign in</h1>
+    <p class="sub">Network <b>{{SSID}}</b>. Enter your room number and the surname on the booking.</p>
+
+    <form id="f" novalidate autocomplete="off">
+      <div class="row">
+        <div class="field">
+          <label for="room">Room</label>
+          <input id="room" name="room" type="text" inputmode="numeric" placeholder="412"
+                 autocomplete="off" aria-describedby="e-room">
+          <p class="err" id="e-room" aria-live="polite"></p>
+        </div>
+        <div class="field">
+          <label for="surname">Surname</label>
+          <input id="surname" name="surname" type="text" placeholder="As booked"
+                 autocomplete="family-name" autocapitalize="words" aria-describedby="e-surname">
+          <p class="err" id="e-surname" aria-live="polite"></p>
+        </div>
+      </div>
+
+      <div class="field">
+        <label for="password">Wi-Fi password</label>
+        <input id="password" name="password" type="password" placeholder="From your key card sleeve"
+               spellcheck="false" autocapitalize="none" autocomplete="off" aria-describedby="e-password">
+        <p class="err" id="e-password" aria-live="polite"></p>
+      </div>
+
+      <button id="go" type="submit"><span class="spin" aria-hidden="true"></span><span class="lbl">Connect</span></button>
+    </form>
+
+    <p class="note" id="note" role="status" aria-live="polite"></p>
+    <p class="fine" id="fine">Access is valid for the duration of your stay, up to three devices. The password is printed inside your key card sleeve.</p>
+  </div>
+
+  <section class="done" id="done" hidden>
+    <svg width="44" height="44" viewBox="0 0 44 44" aria-hidden="true">
+      <circle cx="22" cy="22" r="21" fill="#edf4ee"/>
+      <path d="M14.5 22.4l5.3 5.3 9.7-10.4" fill="none" stroke="#3f7a4f" stroke-width="2.6"
+            stroke-linecap="round" stroke-linejoin="round"/>
+    </svg>
+    <h2>You are online</h2>
+    <p>Welcome to The Wren. You can close this window.</p>
+  </section>
+</main>
+
+<script>
+(function () {
+  var form = document.getElementById('f');
+  var btn = document.getElementById('go');
+  var label = btn.querySelector('.lbl');
+  var note = document.getElementById('note');
+  var done = document.getElementById('done');
+  var busy = false;
+  var timer = 0;
+
+  function setError(id, msg) {
+    document.getElementById('e-' + id).textContent = msg || '';
+    document.getElementById(id).setAttribute('aria-invalid', msg ? 'true' : 'false');
+  }
+
+  function state(bad, text) {
+    note.textContent = text || '';
+    note.className = 'note' + (bad ? ' bad' : '');
+  }
+
+  function setBusy(on) {
+    busy = on;
+    btn.disabled = on;
+    btn.classList.toggle('busy', on);
+    label.textContent = on ? 'Checking…' : 'Connect';
+  }
+
+  form.addEventListener('submit', function (ev) {
+    ev.preventDefault();
+    if (busy) return;
+    clearTimeout(timer);
+
+    var data = {};
+    new FormData(form).forEach(function (v, k) { data[k] = String(v); });
+
+    var first = null;
+    [
+      ['room', /^[0-9a-z\-]{1,6}$/i.test(data.room.trim()) ? '' : 'Enter your room number'],
+      ['surname', data.surname.trim().length >= 2 ? '' : 'Enter the surname on the booking'],
+      ['password', data.password.trim() ? '' : 'Enter the Wi-Fi password']
+    ].forEach(function (pair) {
+      setError(pair[0], pair[1]);
+      if (pair[1] && !first) first = pair[0];
+    });
+    if (first) { document.getElementById(first).focus(); return; }
+
+    state(false, '');
+    setBusy(true);
+
+    fetch('{{ACTION}}', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data)
+    })
+      .then(function (r) { return r.json(); })
+      .then(function (res) {
+        var verdict = (res && res.verdict) || 'pending';
+        if (verdict === 'ok') {
+          form.hidden = true;
+          document.getElementById('fine').hidden = true;
+          document.querySelector('h1').hidden = true;
+          document.querySelector('.sub').hidden = true;
+          state(false, '');
+          done.hidden = false;
+          return;
+        }
+        if (verdict === 'retry') {
+          setBusy(false);
+          state(true, 'That password did not work. Please check the key card sleeve.');
+          document.getElementById('password').select();
+          return;
+        }
+        state(false, 'Checking your details, reconnecting…');
+        timer = setTimeout(function () {
+          setBusy(false);
+          state(false, 'If the window does not close by itself, press Connect again.');
+        }, 4000);
+      })
+      .catch(function () {
+        setBusy(false);
+        state(true, 'The network did not answer. Please try again.');
+      });
+  });
+
+  document.getElementById('room').focus({ preventScroll: true });
+})();
+</script>
+</body>
+</html>
