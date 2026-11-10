@@ -1,0 +1,110 @@
+#!/bin/sh
+# wifikit-doctor: собрать всё, что нужно для разбора падений, в один файл.
+# Запуск: wifikit-doctor   (без root; часть проверок делает sudo -n, если можно)
+set +e
+
+OUT="${1:-$HOME/wifikit-doctor.txt}"
+PY="/usr/lib/wifikit/venv/bin/python"
+[ -x "$PY" ] || PY="$(command -v python3)"
+
+say() { printf '\n===== %s =====\n' "$*"; }
+
+{
+  say "когда и где"
+  date -u
+  uname -a
+  if [ -r /etc/os-release ]; then
+    # shellcheck disable=SC1091
+    . /etc/os-release
+    echo "${PRETTY_NAME:-?} (${VERSION_CODENAME:-?})"
+  fi
+  echo "python по умолчанию: $(command -v python3)"
+  "$(command -v python3)" -V 2>&1
+  echo "откуда запускается GUI: $(sed -n 's/^PREFIX="\(.*\)"/\1/p' /usr/bin/wifikit 2>/dev/null || echo неизвестно)"
+
+  say "место и память"
+  df -h / /tmp /var 2>/dev/null
+  echo "тип ФС установки:"; findmnt -no FSTYPE,SOURCE /usr 2>/dev/null || mount | grep " / "
+  df -i / 2>/dev/null
+  free -m
+  echo "лимит core: $(ulimit -c)"
+  echo "каталог запуска: $(pwd)"
+  mount | grep -i "macos\|virtiofs\|9p\|nfs" || echo "сетевых/virtiofs монтирований нет"
+
+  say "установка"
+  ls -l /usr/bin/wifikit /usr/lib/wifikit/daemon.py 2>&1
+  echo "демон, первые байты:"; head -c 40 /usr/lib/wifikit/daemon.py 2>&1 | od -c | head -3
+  echo "интерпретатор GUI:"; sed -n 's/^PY="\(.*\)"/\1/p' /usr/bin/wifikit 2>/dev/null
+
+  say "python-окружение"
+  "$PY" -V
+  "$PY" -m pip show PySide6 2>/dev/null | sed -n '1,4p'
+  "$PY" - <<'EOF'
+import sys
+try:
+    import PySide6
+    from PySide6 import QtCore
+    print("PySide6:", PySide6.__version__, "Qt:", QtCore.qVersion(), "python:", sys.version.split()[0])
+except Exception as exc:
+    print("ИМПОРТ PySide6 УПАЛ:", type(exc).__name__, exc)
+EOF
+
+  say "целостность Qt-библиотек (ldd)"
+  QTLIB="$("$PY" - <<'EOF'
+import os, PySide6
+print(os.path.join(os.path.dirname(PySide6.__file__), "Qt", "lib", "libQt6Widgets.so.6"))
+EOF
+)"
+  echo "файл: $QTLIB"
+  ls -l "$QTLIB" 2>&1
+  ldd "$QTLIB" 2>&1 | grep -i "not found\|undefined" || echo "ldd: все зависимости на месте"
+  # обрезанная по размеру .so даёт SIGBUS — сверяем размер с ожидаемым по ELF
+  "$PY" - "$QTLIB" <<'EOF'
+import sys, os
+p = sys.argv[1]
+try:
+    size = os.path.getsize(p)
+    with open(p, "rb") as fh:
+        head = fh.read(64)
+    ok = head[:4] == b"\x7fELF"
+    print(f"размер: {size} байт, ELF-заголовок: {'ок' if ok else 'НЕТ (файл повреждён)'}")
+except OSError as exc:
+    print("не прочитать:", exc)
+EOF
+
+  say "пробный запуск Qt без окна"
+  QT_QPA_PLATFORM=offscreen "$PY" - <<'EOF'
+import sys
+try:
+    from PySide6.QtWidgets import QApplication, QLabel
+    app = QApplication(sys.argv)
+    w = QLabel("ok")
+    w.resize(50, 20)
+    print("Qt создал виджет: ок")
+except Exception as exc:
+    print("QT УПАЛ:", type(exc).__name__, exc)
+EOF
+  echo "код выхода: $?"
+
+  say "Qt-плагины (xcb)"
+  QT_DEBUG_PLUGINS=1 QT_QPA_PLATFORM=xcb timeout 8 "$PY" -c "from PySide6.QtWidgets import QApplication; a=QApplication([])" 2>&1 \
+    | grep -i "cannot\|error\|xcb" | head -12
+
+  say "демон: самопроверка"
+  sudo -n /usr/bin/python3 -X utf8 /usr/lib/wifikit/daemon.py --check 2>&1 || echo "(для этой проверки нужен root: запустите с sudo)"
+
+  say "лог демона (последние 40 строк)"
+  tail -40 "$HOME/.local/state/wifikit/daemon.log" 2>&1
+
+  say "ядро: следы падений"
+  sudo -n dmesg 2>/dev/null | tail -25 | grep -i "segfault\|bus error\|oom\|killed" || echo "(нет доступа к dmesg или падений не было)"
+
+  say "версии инструментов"
+  for b in iw nmcli hcxdumptool hcxpcapngtool aireplay-ng hostapd dnsmasq nft hashcat; do
+    printf '%-16s %s\n' "$b" "$(command -v "$b" || echo НЕТ)"
+  done
+} >"$OUT" 2>&1
+
+say "готово"
+echo "отчёт: $OUT"
+echo "первые 40 строк:"; sed -n '1,40p' "$OUT"

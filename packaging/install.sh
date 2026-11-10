@@ -30,12 +30,22 @@ if [ -r /var/lib/dpkg/status ]; then
 fi
 
 say "1/5 системные пакеты"
+for mount in /usr /tmp; do
+  avail_mb=$(df -Pm "$mount" 2>/dev/null | awk 'NR==2 {print $4}')
+  if [ -n "${avail_mb:-}" ] && [ "$avail_mb" -lt 1200 ]; then
+    die "на $mount свободно ${avail_mb} МБ — нужно минимум 1200. Освободите место:
+  sudo du -xh / --exclude=/proc --exclude=/sys | sort -h | tail -20
+  sudo apt-get clean; sudo journalctl --vacuum-size=100M
+Переполненный диск — главная причина обрезанных Qt-библиотек и падений с Bus error."
+  fi
+done
 APT_CORE="python3 python3-venv python3-pip iw iproute2 network-manager rfkill
  aircrack-ng hostapd dnsmasq nftables hcxtools hashcat usbutils
  gcc make libpcap-dev git pkg-config"
+# только системные xcb/EGL: Qt6 внутри PySide6 свой, системный libqt6* с ним конфликтует
 APT_QT="libxcb-cursor0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-randr0
  libxcb-render-util0 libxcb-shape0 libxcb-xinerama0 libxkbcommon-x11-0
- libegl1 libgl1 libqt6svg6"
+ libegl1 libgl1"
 
 apt_healthy() {
   # «Splitting up … into data and signature failed» = сломан apt или кончилось место,
@@ -112,18 +122,56 @@ if [ "$QT_OK" -eq 0 ] && command -v apt-get >/dev/null; then
     "$PY" -c "import PySide6" >/dev/null 2>&1 && { QT_OK=1; break; }
   done
 fi
+qt_smoke() {
+  # настоящий запуск Qt без окна: ловит и битые .so, и отсутствующие xcb-плагины
+  QT_QPA_PLATFORM=offscreen "$1" - >/tmp/wifikit-qt-smoke.log 2>&1 <<'PYEOF'
+from PySide6.QtWidgets import QApplication, QLabel
+app = QApplication([])
+label = QLabel("ok")
+label.resize(40, 16)
+label.show()
+print("qt-ok")
+PYEOF
+  rc=$?
+  if grep -q "qt-ok" /tmp/wifikit-qt-smoke.log; then
+    return 0
+  fi
+  echo "   Qt не запустился (код $rc): $(tail -2 /tmp/wifikit-qt-smoke.log | tr '\n' ' ')"
+  return 1
+}
+
+install_pyside_venv() {
+  local pin="$1"
+  install -d "$PREFIX"
+  [ -x "$PREFIX/venv/bin/python" ] || "$PY" -m venv "$PREFIX/venv" || return 1
+  "$PREFIX/venv/bin/pip" -q install --upgrade pip
+  if [ -n "$pin" ]; then
+    "$PREFIX/venv/bin/pip" -q install --force-reinstall "PySide6==$pin" pyyaml psutil
+  else
+    "$PREFIX/venv/bin/pip" -q install --force-reinstall PySide6 pyyaml psutil
+  fi
+}
+
 if [ "$QT_OK" -eq 0 ]; then
   say "   системного PySide6 нет — делаю изолированное окружение $PREFIX/venv"
-  install -d "$PREFIX"
-  "$PY" -m venv "$PREFIX/venv" || die "нет python3-venv: sudo apt install python3-venv"
-  "$PREFIX/venv/bin/pip" -q install --upgrade pip
-  "$PREFIX/venv/bin/pip" -q install PySide6 pyyaml psutil || die "pip не поставил PySide6 (нет сети?)"
+  install_pyside_venv "" || die "pip не поставил PySide6 (нет сети или нет места?)"
   PY="$PREFIX/venv/bin/python"
   say "   GUI будет запускаться этим интерпретатором: $PY"
+  if ! qt_smoke "$PY"; then
+    warn "   Qt падает — переустанавливаю на проверенную ветку 6.8 (частый случай на 22.04)"
+    if install_pyside_venv "6.8.3" && qt_smoke "$PY"; then
+      say "   на 6.8.3 Qt работает"
+    else
+      FAILED+=("Qt не запускается даже на 6.8.3 — запустите wifikit-doctor и пришлите отчёт")
+    fi
+  else
+    say "   проверка Qt: ок"
+  fi
 else
   say "   PySide6 найден в системном Python"
   "$PY" -m pip -q install pyyaml psutil 2>/dev/null \
     || apt-get install -y -qq --no-install-recommends python3-yaml python3-psutil >/dev/null 2>&1 || true
+  qt_smoke "$PY" || FAILED+=("системный Qt не проходит пробный запуск — см. wifikit-doctor")
 fi
 
 say "3/5 hcxdumptool >= 7"
@@ -169,6 +217,7 @@ sed -e "s|@PY@|$PY|g" -e "s|@PREFIX@|$PREFIX|g" "$ROOT/packaging/wifikit" > /usr
 chmod 0755 /usr/bin/wifikit
 install -m 0644 "$ROOT/packaging/wifikit.desktop" /usr/share/applications/wifikit.desktop
 install -m 0644 "$ROOT/packaging/io.github.wifikit.policy" /usr/share/polkit-1/actions/
+install -m 0755 "$ROOT/packaging/wifikit-doctor" /usr/bin/wifikit-doctor
 
 say "5/5 проверка"
 "$PY" -c "import PySide6.QtWidgets, yaml, psutil; print('   python:', '$PY')" || FAILED+=("python-зависимости")
