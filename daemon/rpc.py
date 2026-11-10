@@ -79,7 +79,11 @@ class _Handler(socketserver.StreamRequestHandler):
     def handle(self) -> None:
         router: Router = self.server.router  # type: ignore[attr-defined]
         while True:
-            line = self.rfile.readline(MAX_LINE)
+            try:
+                line = self.rfile.readline(MAX_LINE)
+            except (ConnectionResetError, BrokenPipeError):
+                # GUI закрылся/перезапустился — это норма, а не ошибка
+                return
             if not line:
                 return
             try:
