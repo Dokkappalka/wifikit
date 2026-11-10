@@ -36,6 +36,10 @@ class MainWindow(QMainWindow):
         self.timer = QTimer(self)
         self.timer.timeout.connect(self._tick)
         self.timer.start(1800)
+        self.retry_timer = QTimer(self)
+        self.retry_timer.setInterval(20000)
+        self.retry_timer.setSingleShot(True)
+        self.retry_timer.timeout.connect(self._retry_connect)
 
     # ------------------------------------------------------------------ layout
     def _build(self) -> None:
@@ -157,6 +161,18 @@ class MainWindow(QMainWindow):
     def _conn_failed(self, message: str, detail: str) -> None:
         self._log(f"{message}: {detail}")
         self.lbl_project.setText(message)
+        if not getattr(self, "_conn_error_shown", False):
+            self._conn_error_shown = True
+            self.show_error(message, detail)
+        # одна автоматическая попытка переподключения, чтобы не дёргать пользователя
+        if not self.retry_timer.isActive():
+            self.retry_timer.start()
+
+    def _retry_connect(self) -> None:
+        if self.remote.is_connected():
+            return
+        self._log("повторная попытка подключиться к демону…")
+        self._connect()
 
     def _after_connect(self) -> None:
         self._log("связь есть")

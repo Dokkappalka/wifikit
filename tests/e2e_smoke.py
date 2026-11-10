@@ -38,11 +38,15 @@ def main() -> int:
     os.environ["XDG_RUNTIME_DIR"] = tmp
     env = {**os.environ, "WIFIKIT_ALLOW_NONROOT": "1", "WIFIKIT_STATE_DIR": tmp,
            "WIFIKIT_PROJECTS_DIR": f"{tmp}/projects", "XDG_RUNTIME_DIR": tmp}
-    proc = subprocess.Popen([sys.executable, str(ROOT / "daemon" / "main.py")], env=env,
-                            stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+    sock = Path(tmp) / "wifikit.sock"
+    # демон получает путь и владельца аргументами — как это делает GUI через pkexec
+    proc = subprocess.Popen([sys.executable, str(ROOT / "daemon" / "main.py"),
+                             "--socket", str(sock),
+                             "--owner", str(os.getuid()), "--group", str(os.getgid())],
+                            env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
     failures = []
     try:
-        path = socket_path()
+        path = sock
         if not wait_socket(path):
             proc.terminate()
             try:
@@ -52,7 +56,7 @@ def main() -> int:
                 out = ""
             print("демон не поднялся:\n" + (out or ""))
             return 1
-        client = Client(timeout=30)
+        client = Client(path=sock, timeout=30)
 
         pong = client.call("ping")
         assert pong["pong"] is True

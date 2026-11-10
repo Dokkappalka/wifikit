@@ -57,6 +57,8 @@ QScrollArea {{ border: none; }}
 QSplitter::handle {{ background: {BORDER}; height: 1px; }}
 QPlainTextEdit#console {{ font-family: "JetBrains Mono", Menlo, monospace; font-size: 11.5px; color: #c3cad6; background: #0b0d11; border-top: 1px solid {BORDER}; }}
 QToolTip {{ background: {CARD}; color: {TEXT}; border: 1px solid {BORDER}; padding: 4px; }}
+QTableWidget QComboBox, QTableWidget QLineEdit {{ padding: 3px 6px; margin: 3px; min-height: 22px; }}
+QTableWidget QComboBox QAbstractItemView {{ padding: 0; }}
 QLabel#badge {{ border: 1px solid {BORDER}; border-radius: 4px; padding: 1px 5px; font-size: 10px; color: {MUTED}; text-transform: uppercase; }}
 QLabel#badge_ok {{ border: 1px solid {ACCENT_DIM}; border-radius: 4px; padding: 1px 5px; font-size: 10px; color: {ACCENT}; }}
 QLabel#badge_warn {{ border: 1px solid {WARN}; border-radius: 4px; padding: 1px 5px; font-size: 10px; color: {WARN}; }}

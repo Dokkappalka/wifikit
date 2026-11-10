@@ -1,4 +1,9 @@
-"""Связь с демоном: запуск через pkexec, запросы в фоновых потоках."""
+"""Связь с демоном: запуск через pkexec, запросы в фоновых потоках.
+
+Демон поднимается с явными `--socket` и `--owner`: pkexec вычищает окружение,
+и вычислять путь сокета независимо с двух сторон нельзя — раньше GUI ждал сокет
+в /run/user/1000, а демон создавал его в /tmp и от root, поэтому «нет связи».
+"""
 
 from __future__ import annotations
 
@@ -15,6 +20,17 @@ from core.base import WilfiError
 from daemon.rpc import Client, socket_path
 
 ROOT = Path(__file__).resolve().parent.parent
+INSTALLED_DAEMON = Path("/usr/lib/wifikit/daemon.py")
+
+
+def log_path() -> Path:
+    base = Path(os.environ.get("XDG_STATE_HOME") or Path.home() / ".local" / "state")
+    path = base / "wifikit" / "daemon.log"
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+    except OSError:
+        return Path("/tmp/wifikit-daemon.log")
+    return path
 
 
 class Remote(QObject):
@@ -25,10 +41,19 @@ class Remote(QObject):
         super().__init__()
         self._client: Client | None = None
         self._lock = threading.Lock()
+        self.socket_file = socket_path()
 
     # ------------------------------------------------------------ connection
     def is_connected(self) -> bool:
         return self._client is not None
+
+    def daemon_log_tail(self, lines: int = 12) -> str:
+        path = log_path()
+        try:
+            text = path.read_text(errors="replace").splitlines()
+        except OSError:
+            return ""
+        return "\n".join(text[-lines:])
 
     def open_link(self, timeout: float = 90.0) -> None:
         """Запустить демон (если нужно) и дождаться сокета.
@@ -39,41 +64,71 @@ class Remote(QObject):
         """
         if self._client:
             return
+        try:
+            self.socket_file.parent.mkdir(parents=True, exist_ok=True)
+        except OSError:
+            pass
+        self._spawn_daemon()
         deadline = time.monotonic() + timeout
-        if not socket_path().exists():
-            self._spawn_daemon()
         last = ""
         while time.monotonic() < deadline:
             try:
-                client = Client(timeout=300)
+                client = Client(path=self.socket_file, timeout=300)
+                client.call("ping")
                 with self._lock:
                     self._client = client
-                client.call("ping")
                 self._try_recover()
-                self.log.emit("демон подключён")
+                self.log.emit(f"демон подключён ({self.socket_file})")
                 return
+            except PermissionError as exc:
+                last = f"нет прав на сокет {self.socket_file}: {exc}"
+                time.sleep(0.7)
+            except ConnectionRefusedError:
+                # сокет есть, но слушателя нет: остаток от прошлого запуска
+                last = "сокет есть, но демон не слушает"
+                try:
+                    if self.socket_file.stat().st_uid == os.getuid():
+                        self.socket_file.unlink()
+                except OSError:
+                    pass
+                time.sleep(0.5)
+                self._spawn_daemon()
             except (OSError, ConnectionError, WilfiError) as exc:
                 last = str(exc)
                 time.sleep(0.7)
-        self.failed.emit("демон не отвечает", last or "проверьте pkexec и polkit-агент")
+        tail = self.daemon_log_tail()
+        manual = " ".join(self._daemon_argv())
+        self.failed.emit(
+            "демон не поднялся",
+            (last or "нет ответа")
+            + (f"\n\nлог демона ({log_path()}):\n{tail}" if tail
+               else "\n\nлог пуст: pkexec, вероятно, не спросил пароль")
+            + "\n\nЗапустить демон вручную в отдельном терминале:\n  sudo " + manual,
+        )
+
+    def _daemon_argv(self) -> list[str]:
+        if INSTALLED_DAEMON.is_file():
+            base = [str(INSTALLED_DAEMON)]
+        else:
+            base = [sys.executable, str(ROOT / "daemon" / "main.py")]
+        return base + ["--socket", str(self.socket_file),
+                       "--owner", str(os.getuid()), "--group", str(os.getgid())]
 
     def _spawn_daemon(self) -> None:
-        sock = socket_path()
-        try:
-            Path(sock).parent.mkdir(parents=True, exist_ok=True)
-        except OSError:
-            pass
-        installed = Path("/usr/lib/wifikit/daemon.py")
-        if installed.is_file():
-            argv = ["pkexec", str(installed)]
-        else:
-            argv = ["pkexec", sys.executable, str(ROOT / "daemon" / "main.py")]
+        argv = ["pkexec", *self._daemon_argv()]
         self.log.emit("$ " + " ".join(argv))
         try:
-            subprocess.Popen(argv, start_new_session=True,
-                             stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
+            out = open(log_path(), "ab", buffering=0)
+        except OSError:
+            out = subprocess.DEVNULL  # type: ignore[assignment]
+        try:
+            subprocess.Popen(argv, start_new_session=True, stdout=out, stderr=subprocess.STDOUT,
+                             stdin=subprocess.DEVNULL)
         except FileNotFoundError:
-            self.failed.emit("нет pkexec", "установите пакет polkit (Ubuntu: policykit-1)")
+            self.failed.emit("нет pkexec", "установите polkit: sudo apt install policykit-1 (или pkexec)")
+        finally:
+            if hasattr(out, "close") and out is not subprocess.DEVNULL:
+                out.close()  # type: ignore[union-attr]
 
     def _try_recover(self) -> None:
         try:
@@ -88,8 +143,19 @@ class Remote(QObject):
         with self._lock:
             client = self._client
         if not client:
-            raise WilfiError("нет связи с демоном", code="offline")
-        return client.call(method, **params)
+            raise WilfiError(
+                "нет связи с демоном",
+                code="offline",
+                detail="демон не запущен или не пустил к сокету. Закройте и откройте приложение; "
+                       "если не помогло — пришлите файл " + str(log_path()),
+            )
+        try:
+            return client.call(method, **params)
+        except (ConnectionError, OSError) as exc:
+            with self._lock:
+                self._client = None
+            raise WilfiError("связь с демоном потеряна", code="offline",
+                             detail=f"{exc}\nлог: {log_path()}") from exc
 
     def shutdown(self) -> None:
         try:

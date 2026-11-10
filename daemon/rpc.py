@@ -102,11 +102,15 @@ class Server(socketserver.ThreadingUnixStreamServer):
     daemon_threads = True
     allow_reuse_address = True
 
-    def __init__(self, path: Path, router: Router):
+    def __init__(self, path: Path, router: Router, owner: int | None = None,
+                 group: int | None = None):
         self.router = router  # type: ignore[misc]
         if path.exists():
             path.unlink()
         super().__init__(str(path), _Handler)
+        # сокет 0600 должен принадлежать пользователю GUI, иначе он получит EACCES
+        if owner is not None:
+            os.chown(path, owner, group if group is not None else owner)
         os.chmod(path, 0o600)
 
 
@@ -130,8 +134,9 @@ def socket_path() -> Path:
     return Path(tempfile.gettempdir()) / "wifikit.sock"
 
 
-def serve(path: Path, router: Router, stop_event: threading.Event) -> None:
-    server = Server(path, router)
+def serve(path: Path, router: Router, stop_event: threading.Event,
+          owner: int | None = None, group: int | None = None) -> None:
+    server = Server(path, router, owner=owner, group=group)
     thread = threading.Thread(target=server.serve_forever, kwargs={"poll_interval": 0.2}, daemon=True)
     thread.start()
     stop_event.wait()

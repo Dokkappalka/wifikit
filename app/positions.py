@@ -57,6 +57,9 @@ class PositionsEditor(QWidget):
         self.table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeToContents)
         self.table.horizontalHeader().setSectionResizeMode(2, QHeaderView.Stretch)
         self.table.setFixedHeight(268)
+        # строка таблицы должна быть выше виджета внутри, иначе текст обрезается
+        self.table.verticalHeader().setDefaultSectionSize(40)
+        self.table.verticalHeader().setMinimumSectionSize(40)
         lay.addWidget(self.table)
 
         self.hint = QLabel("")
