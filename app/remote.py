@@ -106,16 +106,33 @@ class Remote(QObject):
             + "\n\nЗапустить демон вручную в отдельном терминале:\n  sudo " + manual,
         )
 
+    def _daemon_args(self) -> list[str]:
+        return ["--socket", str(self.socket_file),
+                "--owner", str(os.getuid()), "--group", str(os.getgid())]
+
     def _daemon_argv(self) -> list[str]:
         if INSTALLED_DAEMON.is_file():
             base = [str(INSTALLED_DAEMON)]
         else:
             base = [sys.executable, str(ROOT / "daemon" / "main.py")]
-        return base + ["--socket", str(self.socket_file),
-                       "--owner", str(os.getuid()), "--group", str(os.getgid())]
+        return base + self._daemon_args()
+
+    @staticmethod
+    def _needs_interpreter(script: Path) -> bool:
+        """pkexec делает execve по пути: без shebang ядро отдаёт «Exec format error»."""
+        try:
+            head = script.read_bytes()[:2]
+        except OSError:
+            return False
+        return head != b"#!"
 
     def _spawn_daemon(self) -> None:
-        argv = ["pkexec", *self._daemon_argv()]
+        script = INSTALLED_DAEMON if INSTALLED_DAEMON.is_file() else ROOT / "daemon" / "main.py"
+        if script == INSTALLED_DAEMON and self._needs_interpreter(script):
+            # страховка от старой установки без shebang: запускаем интерпретатором явно
+            argv = ["pkexec", "/usr/bin/python3", str(script), *self._daemon_args()]
+        else:
+            argv = ["pkexec", *self._daemon_argv()]
         self.log.emit("$ " + " ".join(argv))
         try:
             out = open(log_path(), "ab", buffering=0)

@@ -156,6 +156,14 @@ install -d "$PREFIX" /usr/share/applications /usr/share/polkit-1/actions
 rm -rf "$PREFIX/app" "$PREFIX/core" "$PREFIX/daemon" "$PREFIX/portals"
 cp -r "$ROOT/app" "$ROOT/core" "$ROOT/daemon" "$ROOT/portals" "$PREFIX/"
 install -m 0755 "$ROOT/daemon/main.py" "$PREFIX/daemon.py"
+# pkexec делает execve по этому пути: без shebang и бита x получим «Exec format error»
+if [ "$(head -c2 "$PREFIX/daemon.py")" != "#!" ]; then
+  FAILED+=("$PREFIX/daemon.py без shebang — демон не запустится")
+fi
+if [ ! -x "$PREFIX/daemon.py" ]; then
+  chmod 0755 "$PREFIX/daemon.py"
+  FAILED+=("$PREFIX/daemon.py не был исполняемым — поправил права")
+fi
 find "$PREFIX" -name '__pycache__' -type d -prune -exec rm -rf {} + 2>/dev/null
 sed -e "s|@PY@|$PY|g" -e "s|@PREFIX@|$PREFIX|g" "$ROOT/packaging/wifikit" > /usr/bin/wifikit
 chmod 0755 /usr/bin/wifikit
