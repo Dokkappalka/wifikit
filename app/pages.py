@@ -473,14 +473,16 @@ class CrackPage(Page):
 
     def _sync(self) -> None:
         kind = self.attack.currentData()
-        self.wordlist.setEnabled(kind in ("wordlist", "hybrid"))
-        self.pick_wl.setEnabled(kind in ("wordlist", "hybrid"))
-        self.rules.setEnabled(kind == "wordlist")
-        self.mask.setEnabled(kind in ("mask", "hybrid"))
+        use_wl = kind in ("wordlist", "hybrid")
+        use_rules = kind == "wordlist"
+        use_mask = kind in ("mask", "hybrid")
+        for widget in (self.lbl_wl, self.wordlist, self.pick_wl):
+            widget.setVisible(use_wl)
+        for widget in (self.lbl_rules, self.rules):
+            widget.setVisible(use_rules)
+        for widget in (self.lbl_mask, self.mask):
+            widget.setVisible(use_mask)
         self.positions.setVisible(kind == "positions")
-        self.lbl_wl.setVisible(kind in ("wordlist", "hybrid"))
-        self.lbl_rules.setVisible(kind == "wordlist")
-        self.lbl_mask.setVisible(kind in ("mask", "hybrid"))
         if kind == "positions":
             self._schedule_preview()
 
