@@ -1,0 +1,79 @@
+#!/bin/sh
+# qt-version-probe: подобрать рабочую пару «python + PySide6» на этой машине.
+#
+# Для каждой комбинации создаётся временное окружение, ставится PySide6 и
+# запускается минимальное Qt-приложение без окна. Таблица в конце показывает,
+# какие версии на этой системе реально работают.
+#
+# Запуск: qt-version-probe   (нужен интернет; ~400 МБ загрузок, временные venv
+# удаляются после каждой попытки)
+set +e
+
+TMP="${TMPDIR:-/tmp}/wifikit-qtprobe"
+OUT="${1:-$HOME/wifikit-qt-versions.txt}"
+mkdir -p "$TMP"
+: >"$OUT"
+
+SYS_PY="$(command -v /usr/bin/python3 || command -v python3)"
+PYENV_PY="$(command -v python3)"
+
+test_pair() {
+  py="$1"; ver="$2"; tag="$3"
+  venv="$TMP/venv-$tag"
+  printf '%-22s python %-6s ... ' "$ver" "$("$py" -c 'import sys;print("%d.%d"%sys.version_info[:2])' 2>/dev/null)"
+  "$py" -m venv "$venv" >/dev/null 2>&1 || { echo "нет venv"; echo "$tag: нет venv" >>"$OUT"; return 1; }
+  if ! "$venv/bin/pip" -q install "PySide6==$ver" >"$venv/pip.log" 2>&1; then
+    echo "не установился"
+    echo "$tag: pip install failed" >>"$OUT"
+    tail -2 "$venv/pip.log" >>"$OUT"
+    rm -rf "$venv"
+    return 1
+  fi
+  QT_QPA_PLATFORM=offscreen timeout 60 "$venv/bin/python" - >"$venv/probe.log" 2>&1 <<'PYEOF'
+import sys
+from PySide6 import QtCore
+from PySide6.QtWidgets import QApplication, QLabel
+app = QApplication(sys.argv)
+label = QLabel("ok")
+label.resize(60, 20)
+label.show()
+print("Qt", QtCore.qVersion(), "ok")
+PYEOF
+  rc=$?
+  case $rc in
+    0)   echo "РАБОТАЕТ"; echo "$tag: ok ($(tail -1 "$venv/probe.log"))" >>"$OUT" ;;
+    139) echo "SIGSEGV";  echo "$tag: SIGSEGV" >>"$OUT" ;;
+    135) echo "SIGBUS";   echo "$tag: SIGBUS" >>"$OUT" ;;
+    134) echo "SIGABRT";  echo "$tag: SIGABRT ($(tail -1 "$venv/probe.log"))" >>"$OUT" ;;
+    *)   echo "код $rc";  echo "$tag: rc=$rc ($(tail -1 "$venv/probe.log"))" >>"$OUT" ;;
+  esac
+  rm -rf "$venv"
+}
+
+echo "python по умолчанию: $PYENV_PY ($("$PYENV_PY" -V 2>&1))"
+echo "системный python:    $SYS_PY ($("$SYS_PY" -V 2>&1))"
+echo
+
+for ver in 6.5.3 6.6.3.1 6.7.3 6.8.0.2 6.9.1; do
+  test_pair "$SYS_PY" "$ver" "sys-$ver"
+done
+
+# если есть отдельный python 3.11–3.13 (pyenv), пробуем свежий PySide6 на нём
+ALT=""
+for cand in python3.13 python3.12 python3.11; do
+  if command -v "$cand" >/dev/null; then ALT="$(command -v "$cand")"; break; fi
+done
+if [ -n "$ALT" ]; then
+  echo
+  test_pair "$ALT" "6.12.0" "alt-612"
+  test_pair "$ALT" "6.8.3" "alt-68"
+fi
+
+echo
+echo "итог:"
+grep -E "^(sys|alt)-" "$OUT" | sed 's/^/  /'
+echo
+echo "отчёт: $OUT"
+echo
+echo "Если нашлась рабочая версия — поставьте её так:"
+echo "  sudo /usr/lib/wifikit/venv/bin/pip install --force-reinstall PySide6==<версия>"

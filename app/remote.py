@@ -64,6 +64,9 @@ class Remote(QObject):
         """
         if self._client:
             return
+        if os.environ.get("WIFIKIT_NO_DAEMON") == "1":
+            self.log.emit("режим без демона (WIFIKIT_NO_DAEMON=1) — запросы будут падать")
+            return
         try:
             self.socket_file.parent.mkdir(parents=True, exist_ok=True)
         except OSError:

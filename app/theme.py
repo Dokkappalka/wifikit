@@ -21,7 +21,7 @@ QLabel#brand {{ font-size: 15px; font-weight: 600; letter-spacing: .04em; }}
 QLabel#muted, QLabel.muted {{ color: {MUTED}; }}
 QLabel#h1 {{ font-size: 17px; font-weight: 600; }}
 QLabel#h2 {{ font-size: 11px; color: {MUTED}; text-transform: uppercase; letter-spacing: .1em; }}
-QLabel#mono, QLabel.mono {{ font-family: "JetBrains Mono", "SF Mono", Menlo, monospace; font-variant-numeric: tabular-nums; }}
+QLabel#mono, QLabel.mono {{ font-family: "JetBrains Mono", "SF Mono", Menlo, monospace; }}
 QLabel#ok {{ color: {ACCENT}; }}
 QLabel#bad {{ color: {DANGER}; }}
 QLabel#warn {{ color: {WARN}; }}
