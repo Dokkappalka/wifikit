@@ -26,9 +26,10 @@ Section: net
 Priority: optional
 Architecture: all
 Maintainer: fedya <fedya@localhost>
-Depends: python3 (>=3.11), python3-pyside6.qtwidgets, python3-yaml, python3-psutil,
+Depends: python3 (>=3.11), python3-yaml, python3-psutil,
  aircrack-ng, hostapd, dnsmasq, nftables, iw, iproute2, network-manager, rfkill,
- policykit-1, hashcat, hcxtools, usbutils
+ policykit-1, hashcat, hcxtools, usbutils,
+ libxcb-cursor0, libxcb-icccm4, libxkbcommon-x11-0, libegl1, libgl1, libqt6svg6
 Recommends: hcxdumptool (>= 7.0.0)
 Description: Аудит Wi-Fi: захват рукопожатий, крошилка, злой двойник
  GUI-инструмент для Linux: захват 4-way и PMKID, оффлайн-брутфорс через hashcat,

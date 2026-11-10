@@ -12,7 +12,7 @@ import time
 from pathlib import Path
 
 from core import adapters as adapters_mod
-from core import deps, link, portal as portal_mod, project as project_mod, report
+from core import deps, link, mask, portal as portal_mod, project as project_mod, report
 from core.ap import PORTAL_PORT, FakeAp
 from core.base import (ResourceSet, WilfiError, atomic_write_json, read_json, require, run,
                        state_dir, which)
@@ -332,18 +332,32 @@ class Session:
         return {"stopped": True}
 
     # ----------------------------------------------------------------- crack
+    def mask_preview(self, positions: list[dict], length_min: int | None = None,
+                     length_max: int | None = None) -> dict:
+        return mask.build(positions or [], length_min, length_max).summary()
+
     def crack_start(self, attack: str, wordlist: str | None = None, rules: str | None = None,
-                    mask: str | None = None, custom_charset: str | None = None, runtime: int | None = None) -> dict:
+                    mask_raw: str | None = None, positions: list[dict] | None = None,
+                    length_min: int | None = None, length_max: int | None = None,
+                    custom_charset: str | None = None, runtime: int | None = None) -> dict:
         project = self._require_project()
         hash_file = self._latest_hash()
         if not hash_file:
             raise WilfiError("нет захваченного хэша", code="no_hash")
         if not self.crack:
             self.crack = Crack(self.jobs, project.path)
+        spec = None
+        if attack == "positions":
+            spec = mask.build(positions or [], length_min, length_max)
+            project.notes.append(
+                f"{time.strftime('%H:%M')} маска {spec.mask} (длина {spec.length_min}-{spec.length_max}, "
+                f"перебор {mask.human_keyspace(spec.keyspace)})")
+            project.save()
         return self.crack.start(
             hash_file, attack,
             wordlist=Path(wordlist) if wordlist else None,
-            rules=rules, mask=mask, custom_charset=custom_charset, runtime=runtime,
+            rules=rules, mask=mask_raw, custom_charset=custom_charset,
+            runtime=runtime, mask_spec=spec,
         )
 
     def crack_status(self) -> dict:

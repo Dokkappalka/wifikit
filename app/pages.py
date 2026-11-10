@@ -13,6 +13,7 @@ from PySide6.QtWidgets import (QCheckBox, QComboBox, QFileDialog, QFrame, QGridL
                                QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget)
 
 from app import i18n
+from app.positions import PositionsEditor
 from app.remote import Remote, Task
 from app.theme import ACCENT, DANGER, MUTED, WARN
 
@@ -394,6 +395,7 @@ class CrackPage(Page):
         grid.setHorizontalSpacing(10)
         grid.addWidget(QLabel(i18n.t("crack.attack")), 0, 0)
         self.attack = QComboBox()
+        self.attack.addItem("по позициям", "positions")
         self.attack.addItem(i18n.t("crack.wordlist"), "wordlist")
         self.attack.addItem(i18n.t("crack.mask"), "mask")
         self.attack.addItem(i18n.t("crack.hybrid"), "hybrid")
@@ -428,6 +430,15 @@ class CrackPage(Page):
         grid.addWidget(self.mask, 3, 1)
         grid.setColumnStretch(1, 1)
         lay.addLayout(grid)
+
+        self.positions = PositionsEditor()
+        self.positions.setVisible(False)
+        self.positions.changed.connect(self._schedule_preview)
+        lay.addWidget(self.positions)
+        self._preview_timer = QTimer(self)
+        self._preview_timer.setSingleShot(True)
+        self._preview_timer.setInterval(350)
+        self._preview_timer.timeout.connect(self._preview_masks)
 
         buttons = QHBoxLayout()
         self.btn_candidates = QPushButton(i18n.t("crack.candidates"))
@@ -466,6 +477,23 @@ class CrackPage(Page):
         self.pick_wl.setEnabled(kind in ("wordlist", "hybrid"))
         self.rules.setEnabled(kind == "wordlist")
         self.mask.setEnabled(kind in ("mask", "hybrid"))
+        self.positions.setVisible(kind == "positions")
+        self.lbl_wl.setVisible(kind in ("wordlist", "hybrid"))
+        self.lbl_rules.setVisible(kind == "wordlist")
+        self.lbl_mask.setVisible(kind in ("mask", "hybrid"))
+        if kind == "positions":
+            self._schedule_preview()
+
+    def _schedule_preview(self) -> None:
+        self._preview_timer.start()
+
+    def _preview_masks(self) -> None:
+        low, high = self.positions.lengths()
+        self.call("mask_preview", self._preview_done, lambda m, d: self.positions.hint.setText(m),
+                  positions=self.positions.positions(), length_min=low, length_max=high)
+
+    def _preview_done(self, spec: dict) -> None:
+        self.positions.apply_spec(spec)
 
     def _choose_wordlist(self) -> None:
         path, _ = QFileDialog.getOpenFileName(self, i18n.t("crack.wordlist"), str(Path.home()))
@@ -483,12 +511,16 @@ class CrackPage(Page):
         self.btn_start.setEnabled(False)
         self.btn_stop.setEnabled(True)
         kind = self.attack.currentData()
-        mask = self.mask.currentData() or self.mask.currentText()
+        raw_mask = self.mask.currentData() or self.mask.currentText()
+        low, high = self.positions.lengths()
         self.call("crack_start", self._status, self._fail,
                   attack=kind,
                   wordlist=self.wordlist.text() or None,
                   rules=self.rules.currentData(),
-                  mask=mask if kind in ("mask", "hybrid") else None)
+                  mask_raw=raw_mask if kind in ("mask", "hybrid") else None,
+                  positions=self.positions.positions() if kind == "positions" else None,
+                  length_min=low if kind == "positions" else None,
+                  length_max=high if kind == "positions" else None)
 
     def _fail(self, message: str, detail: str) -> None:
         self.btn_start.setEnabled(True)

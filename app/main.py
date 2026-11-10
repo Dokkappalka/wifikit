@@ -24,8 +24,8 @@ class MainWindow(QMainWindow):
     def __init__(self) -> None:
         super().__init__()
         self.remote = Remote()
-        self.remote.log.connect(self._log)
-        self.remote.failed.connect(self._conn_failed)
+        self._safe_connect(self.remote.log, self._log)
+        self._safe_connect(self.remote.failed, self._conn_failed)
         self.state = State()
         self.pages: dict[str, QWidget] = {}
         self.lang = "ru"
@@ -139,15 +139,20 @@ class MainWindow(QMainWindow):
         self._show("diag")
 
     # ------------------------------------------------------------------- conn
+    @staticmethod
+    def _safe_connect(signal, slot) -> None:
+        """Подключение сигнала, которое не валит приложение на экзотических сборках Qt."""
+        try:
+            signal.connect(slot)
+        except TypeError:
+            # запасной путь: Qt-стиль, если PySide6 не принял короткую форму
+            signal.connect(slot, Qt.AutoConnection)
+
     def _connect(self) -> None:
-        self._log("подключаюсь к демону (pkexec спросит пароль)…")
-        task = Task(self.remote, "ping")
-        task.done.connect(lambda _d: self._after_connect())
-        task.failed.connect(lambda m, d: self._log(f"{m}: {d}"))
-        self.remote.failed.connect(self._conn_failed)
+        self._log(f"wifikit {VERSION} · подключаюсь к демону (pkexec спросит пароль)…")
         import threading
 
-        threading.Thread(target=self.remote.connect, daemon=True).start()
+        threading.Thread(target=self.remote.open_link, daemon=True).start()
 
     def _conn_failed(self, message: str, detail: str) -> None:
         self._log(f"{message}: {detail}")
@@ -170,7 +175,7 @@ class MainWindow(QMainWindow):
             page.refresh()
 
     def _tick(self) -> None:
-        if not self.remote.connected():
+        if not self.remote.is_connected():
             return
         evil: EvilPage = self.pages["evil"]  # type: ignore[assignment]
         tasks = [Task(self.remote, "ap_status"), Task(self.remote, "portal_status")]
@@ -292,7 +297,7 @@ class MainWindow(QMainWindow):
             self.logbox.append(line)
 
     def closeEvent(self, event) -> None:  # noqa: N802
-        if self.remote.connected():
+        if self.remote.is_connected():
             self._log("останавливаю демон…")
             self.remote.shutdown()
         event.accept()

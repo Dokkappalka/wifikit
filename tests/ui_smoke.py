@@ -46,7 +46,11 @@ def main() -> int:
             time.sleep(0.05)
         for name in ("diag", "scan", "capture", "crack", "evil", "log"):
             window._show(name)
-            for _ in range(12):
+            if name == "crack":
+                page = window.pages["crack"]
+                page.attack.setCurrentIndex(page.attack.findData("positions"))
+                page.positions.positions()
+            for _ in range(16):
                 app.processEvents()
                 time.sleep(0.05)
             pix = window.grab()

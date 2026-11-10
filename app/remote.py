@@ -27,10 +27,16 @@ class Remote(QObject):
         self._lock = threading.Lock()
 
     # ------------------------------------------------------------ connection
-    def connected(self) -> bool:
+    def is_connected(self) -> bool:
         return self._client is not None
 
-    def connect(self, timeout: float = 90.0) -> None:
+    def open_link(self, timeout: float = 90.0) -> None:
+        """Запустить демон (если нужно) и дождаться сокета.
+
+        Имя намеренно не `connect`: метод с таким именем на QObject перекрывает
+        старый Qt-стиль `QObject.connect(sender, signal, receiver, slot)` и ломает
+        подключение сигналов на части сборок PySide6.
+        """
         if self._client:
             return
         deadline = time.monotonic() + timeout

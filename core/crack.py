@@ -13,6 +13,7 @@ from pathlib import Path
 
 from .base import WilfiError, ensure_dir, require, run
 from .jobs import Job, JobRegistry
+from .mask import MaskSpec
 
 RULES_PRESETS = {
     "best64": "/usr/share/hashcat/rules/best64.rule",
@@ -41,6 +42,7 @@ class Crack:
         self._poller: threading.Thread | None = None
         self._stop = threading.Event()
         self._devices_cache: dict | None = None
+        self.keyspace = 0
 
     # ---------------------------------------------------------------- devices
     def devices(self) -> dict:
@@ -62,7 +64,8 @@ class Crack:
     # ------------------------------------------------------------------- start
     def start(self, hash_file: Path, attack: str, wordlist: Path | None = None,
               rules: str | None = None, mask: str | None = None,
-              custom_charset: str | None = None, runtime: int | None = None) -> dict:
+              custom_charset: str | None = None, runtime: int | None = None,
+              mask_spec: MaskSpec | None = None) -> dict:
         if self.job and self.job.state in ("starting", "running", "stopping"):
             raise WilfiError("крошилка уже работает", code="busy")
         if not hash_file.is_file() or not hash_file.read_text().strip():
@@ -87,6 +90,11 @@ class Crack:
                     argv += ["-r", str(rule_path)]
                 elif rules:
                     raise WilfiError(f"правила не найдены: {rules}", code="no_rules")
+        elif attack == "positions":
+            if not mask_spec:
+                raise WilfiError("не собрана маска по позициям", code="no_mask")
+            argv += mask_spec.argv_fragment()
+            self.keyspace = mask_spec.keyspace
         elif attack == "mask":
             if not mask:
                 raise WilfiError("маска пуста", code="no_mask")
@@ -106,6 +114,7 @@ class Crack:
         self.speed = ""
         self.progress = 0.0
         self.recovered = 0
+        self.keyspace = 0
         if outfile.exists():
             outfile.unlink()
         job = Job("crack", argv, title=f"hashcat {attack}")
@@ -166,6 +175,7 @@ class Crack:
             "progress": self.progress,
             "found": self.found,
             "recovered": self.recovered,
+            "keyspace": self.keyspace,
         }
 
 

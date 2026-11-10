@@ -85,6 +85,26 @@ def main() -> int:
         except WilfiError as exc:
             print(f"capture без цели: {exc.code} — верно")
 
+        spec = client.call("mask_preview",
+                           positions=[{"kind": "upper"}, {"kind": "digit"},
+                                      {"kind": "fixed", "value": "-"}, {"kind": "custom", "value": "abc"}],
+                           length_min=4, length_max=4)
+        assert spec["mask"] == "?u?d-?1", spec["mask"]
+        assert spec["keyspace"] == 26 * 10 * 1 * 3, spec["keyspace"]
+        print(f"mask_preview ok: {spec['mask']} / {spec['keyspace_human']}")
+
+        spec2 = client.call("mask_preview", positions=[{"kind": "digit"}] * 4,
+                            length_min=4, length_max=6)
+        assert spec2["mask"] == "?d?d?d?d?d?d" and spec2["incremental"] is True
+        print(f"диапазон длин ok: {spec2['mask']} ({spec2['length_min']}-{spec2['length_max']})")
+
+        try:
+            client.call("crack_start", attack="positions",
+                        positions=[{"kind": "digit"}] * 8, length_min=8, length_max=8)
+            failures.append("crack_start без хэша должен падать")
+        except WilfiError as exc:
+            print(f"крошилка без хэша: {exc.code} — верно")
+
         report = client.call("report_export", fmt="md")
         assert Path(report["path"]).is_file()
         print(f"report_export ok -> {report['path']}")
