@@ -325,6 +325,7 @@ monitor), снимается с управления NetworkManager, затем 
 | Симптом | Что проверить |
 |---|---|
 | «нет связи с демоном» | `~/.local/state/wifikit/daemon.log`; `ls -l $XDG_RUNTIME_DIR/wifikit.sock` (владелец — вы, `srw-------`); не отменён ли запрос пароля polkit |
+| `Exec format error` в логе | старая установка: файл демона без shebang. Переустановите; вручную — `sudo /usr/bin/python3 /usr/lib/wifikit/daemon.py --check` |
 | «не хватает зависимостей» | `sudo packaging/install.sh` ещё раз, затем мастер диагностики |
 | «PMF обязателен» | точка защищает кадры управления: деаут бесполезен, берите PMKID |
 | «нет хэша» | сначала захват; хэш должен лежать в `hash/*.hc22000` непустым |

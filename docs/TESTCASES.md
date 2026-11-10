@@ -78,6 +78,16 @@
 **B7 ~ · Журнал в окне**
 Каждое действие видно в нижней панели «Журнал» (команда или результат).
 
+**B8bis · Проверка окружения демона**
+`sudo /usr/bin/python3 /usr/lib/wifikit/daemon.py --check`
+→ печатает версию python, uid, «модули: ok», каталог состояния и отсутствующие инструменты.
+Пустой список проблем = демон обязан запускаться.
+
+**B8ter (P) · Запуск демона через pkexec вручную**
+`pkexec /usr/bin/python3 /usr/lib/wifikit/daemon.py --check` → тот же вывод, но после ввода пароля.
+Если здесь `Exec format error` — pkexec получил файл без shebang; GUI больше от этого не зависит,
+он всегда подставляет интерпретатор.
+
 **B8 (P) · Мусор в RPC**
 `echo 'not json' | socat - UNIX-CONNECT:$XDG_RUNTIME_DIR/wifikit.sock` → ответ с ошибкой `bad_json`, демон жив.
 

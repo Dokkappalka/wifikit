@@ -43,6 +43,36 @@ class DaemonEntrypointTest(unittest.TestCase):
         text = LAUNCHER.read_text()
         self.assertIn('exec "$PY"', text)
 
+    def test_self_check_mode_exists(self):
+        text = DAEMON.read_text()
+        self.assertIn("--check", text)
+        self.assertIn("def self_check", text)
+
+    @unittest.skipUnless(os.path.exists("/usr/bin/python3") or os.path.exists("/usr/local/bin/python3"),
+                         "нет системного python3")
+    def test_spawn_uses_explicit_interpreter(self):
+        try:
+            from app import remote as remote_mod
+        except ModuleNotFoundError:
+            self.skipTest("PySide6 не установлен")
+        captured = {}
+
+        class FakePopen:
+            def __init__(self, argv, **kwargs):
+                captured["argv"] = argv
+
+        original = remote_mod.subprocess.Popen
+        remote_mod.subprocess.Popen = FakePopen  # type: ignore[assignment]
+        try:
+            remote_mod.Remote()._spawn_daemon()
+        finally:
+            remote_mod.subprocess.Popen = original  # type: ignore[assignment]
+        argv = captured["argv"]
+        self.assertEqual(argv[0], "pkexec")
+        self.assertTrue(argv[1].endswith("python3"), argv)
+        self.assertIn("daemon", " ".join(argv))
+        self.assertIn("--socket", argv)
+
 
 if __name__ == "__main__":
     unittest.main()

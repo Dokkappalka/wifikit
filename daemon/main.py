@@ -32,11 +32,49 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--socket", help="путь к unix-сокету (по умолчанию вычисляется)")
     parser.add_argument("--owner", type=int, help="uid пользователя GUI: станет владельцем сокета")
     parser.add_argument("--group", type=int, help="gid пользователя GUI")
+    parser.add_argument("--check", action="store_true",
+                        help="только проверить окружение демона и выйти (для диагностики)")
     return parser.parse_args(argv)
 
 
+def self_check() -> int:
+    """Быстрая проверка: импорты, права, каталог сокета. Вызывается как `--check`."""
+    problems = []
+    print(f"python: {sys.version.split()[0]} ({sys.executable})")
+    print(f"uid: {os.geteuid()}, cwd: {os.getcwd()}")
+    try:
+        import core.base, core.scan, core.mask, core.crack, core.ap, core.portal  # noqa: F401
+        import daemon.rpc, daemon.session  # noqa: F401
+        print("модули: ok")
+    except Exception as exc:  # noqa: BLE001
+        problems.append(f"импорт: {exc}")
+    try:
+        d = state_dir()
+        print(f"state dir: {d} (запись: {'да' if os.access(d, os.W_OK) else 'нет'})")
+    except Exception as exc:  # noqa: BLE001
+        problems.append(f"state dir: {exc}")
+    for binary in ("iw", "ip", "nmcli", "hcxdumptool", "hcxpcapngtool", "hostapd", "dnsmasq", "nft", "hashcat"):
+        from core.base import which
+
+        path = which(binary)
+        if not path:
+            problems.append(f"нет {binary}")
+    print(f"инструменты: {'ok' if not problems else 'проблемы'}")
+    for p in problems:
+        print(f"  !! {p}")
+    return 0 if not problems else 2
+
+
 def main(argv: list[str] | None = None) -> int:
+    # pkexec запускает без локали: без UTF-8 русский вывод падал бы на ASCII-терминале
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(encoding="utf-8", errors="replace")  # type: ignore[union-attr]
+        except AttributeError:
+            pass
     args = parse_args(argv)
+    if args.check:
+        return self_check()
     if os.geteuid() != 0 and os.environ.get("WIFIKIT_ALLOW_NONROOT") != "1":
         print("демону нужен root: запускайте через pkexec", file=sys.stderr)
         return 1
