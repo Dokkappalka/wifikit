@@ -8,13 +8,20 @@ import time
 from pathlib import Path
 
 from . import link
-from .base import ResourceSet, WilfiError, require, run, wait_until
+from .base import ResourceSet, WilfiError, require, run, wait_until, which
 from .convert import best_pair
 
 
 def check_offline(hash_file: Path, psk: str) -> dict:
-    """hcxpmktool: 0 — пароль подтверждён, 2 — не подтверждён, 1 — ошибка."""
-    pmk = require("hcxpmktool")
+    """hcxpmktool: 0 — пароль подтверждён, 2 — не подтверждён, 1 — ошибка.
+
+    Без hcxpmktool (старые hcxtools) проверка невозможна — возвращаем
+    `unavailable`, чтобы портал не объявил верный пароль неверным.
+    """
+    pmk = which("hcxpmktool")
+    if not pmk:
+        return {"ok": False, "unavailable": True,
+                "reason": "нет hcxpmktool (нужны hcxtools >= 6.2) — проверка недоступна"}
     line = best_pair(hash_file)
     if not line:
         raise WilfiError("в хэше нет пригодной пары", code="no_pair")

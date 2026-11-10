@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import json
+import re
 import threading
 import time
 from pathlib import Path
@@ -43,6 +44,16 @@ class Crack:
         self._stop = threading.Event()
         self._devices_cache: dict | None = None
         self.keyspace = 0
+        self._json_ok: bool | None = None
+
+    # ------------------------------------------------------------- status json
+    def supports_status_json(self) -> bool:
+        """--status-json есть не во всех сборках (Ubuntu 22.04 везёт hashcat 6.2.5)."""
+        if self._json_ok is None:
+            hc = require("hashcat")
+            res = run([hc, "--help"], timeout=40)
+            self._json_ok = "--status-json" in (res.out + res.err)
+        return self._json_ok
 
     # ---------------------------------------------------------------- devices
     def devices(self) -> dict:
@@ -73,9 +84,13 @@ class Crack:
         hc = require("hashcat")
         potfile = self.workdir / "hashcat.potfile"
         outfile = self.workdir / "found.txt"
+        if self.supports_status_json():
+            status_args = ["--status-json", "--status-timer", "2"]
+        else:
+            status_args = ["--status", "--status-timer", "2"]
         argv = [hc, "-m", "22000", str(hash_file), "--potfile-path", str(potfile),
-                "-o", str(outfile), "--outfile-format", "2", "--status-json",
-                "--status-timer", "2", "--force", "--quiet"]
+                "-o", str(outfile), "--outfile-format", "2", *status_args,
+                "--force", "--quiet"]
         if runtime:
             argv += ["--runtime", str(runtime)]
         if custom_charset:
@@ -147,6 +162,7 @@ class Crack:
             for _, line in newer:
                 line = line.strip()
                 if not line.startswith("{"):
+                    _parse_text_status(line, self)
                     continue
                 try:
                     data = json.loads(line)
@@ -177,6 +193,25 @@ class Crack:
             "recovered": self.recovered,
             "keyspace": self.keyspace,
         }
+
+
+# hashcat печатает «Speed.#1.........:  1234.5 kH/s» — двоеточие стоит после точек-заполнителей
+_SPEED_RE = re.compile(r"Speed[^:]*:\s*([\d.,]+)\s*([kKmMgG]?)\s*H/s")
+_PROGRESS_RE = re.compile(r"Progress[^:]*:\s*(\d+)/(\d+)")
+
+
+def _parse_text_status(line: str, crack: "Crack") -> None:
+    """Разбор обычного вывода hashcat --status (когда --status-json недоступен)."""
+    speed = _SPEED_RE.search(line)
+    if speed:
+        value = float(speed.group(1).replace(",", ""))
+        multiplier = {"": 1, "k": 1e3, "m": 1e6, "g": 1e9}.get(speed.group(2).lower(), 1)
+        crack.speed = _human_speed(value * multiplier)
+    progress = _PROGRESS_RE.search(line)
+    if progress:
+        done, total = int(progress.group(1)), int(progress.group(2))
+        if total:
+            crack.progress = round(done * 100.0 / total, 2)
 
 
 def _human_speed(value: float) -> str:

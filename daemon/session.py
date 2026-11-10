@@ -302,9 +302,13 @@ class Session:
         if hash_file:
             try:
                 verdict = check_offline(hash_file, candidate)
-            except WilfiError:
-                verdict = {"ok": False, "reason": "проверка не удалась"}
+            except WilfiError as exc:
+                verdict = {"ok": False, "reason": f"проверка не удалась: {exc}"}
             project.notes.append(f"  оффлайн-проверка: {verdict['reason']}")
+            if verdict.get("unavailable"):
+                # инструмент проверки отсутствует — не врём ни «верно», ни «неверно»
+                project.save()
+                return "pending"
             if verdict["ok"]:
                 project.password = candidate
                 project.save()

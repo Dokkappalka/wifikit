@@ -19,8 +19,9 @@ STATE_DIR = Path(os.environ.get("WIFIKIT_STATE_DIR") or Path.home() / ".local" /
 PROJECTS_DIR = Path(os.environ.get("WIFIKIT_PROJECTS_DIR") or Path.home() / "wifikit-projects")
 BIN_DIR = Path(os.environ.get("WIFIKIT_BIN_DIR") or "/usr/bin")
 
-# Минимальные версии: старый hcxdumptool 6.x имеет другой CLI.
-MIN_VERSIONS = {"hcxdumptool": (7, 0, 0), "hcxpcapngtool": (6, 3, 0), "hashcat": (6, 2, 6)}
+# hcxdumptool 6.x имеет другой CLI — на нём захват не работает.
+# hashcat берём с 6.0: без --status-json он всё равно годится, прогресс парсим из --status.
+MIN_VERSIONS = {"hcxdumptool": (7, 0, 0), "hcxpcapngtool": (6, 2, 0), "hashcat": (6, 0, 0)}
 
 
 class WilfiError(Exception):

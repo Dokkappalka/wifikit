@@ -19,20 +19,76 @@ if [ "$(id -u)" -ne 0 ]; then
   die "нужен root: sudo $0"
 fi
 
+# shellcheck disable=SC1091
+distro="$(. /etc/os-release 2>/dev/null && echo "${PRETTY_NAME:-неизвестно}")"
+say "0/5 окружение: $distro ($(uname -m))"
+if [ -r /var/lib/dpkg/status ]; then
+  free_mb=$(df -Pm /var 2>/dev/null | awk 'NR==2 {print $4}')
+  if [ -n "${free_mb:-}" ] && [ "$free_mb" -lt 200 ]; then
+    warn "на разделе /var свободно ${free_mb} МБ — apt с таким запасом работать не будет"
+  fi
+fi
+
 say "1/5 системные пакеты"
 APT_CORE="python3 python3-venv python3-pip iw iproute2 network-manager rfkill
- aircrack-ng hostapd dnsmasq nftables hcxtools hashcat usbutils policykit-1
+ aircrack-ng hostapd dnsmasq nftables hcxtools hashcat usbutils
  gcc make libpcap-dev git pkg-config"
 APT_QT="libxcb-cursor0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-randr0
  libxcb-render-util0 libxcb-shape0 libxcb-xinerama0 libxkbcommon-x11-0
  libegl1 libgl1 libqt6svg6"
 
+apt_healthy() {
+  # «Splitting up … into data and signature failed» = сломан apt или кончилось место,
+  # и это не наша ошибка: без рабочих индексов ни hcxdumptool не собрать, ни Qt не поставить.
+  local out
+  out=$(apt-get update 2>&1)
+  if echo "$out" | grep -q "Splitting up"; then
+    warn "apt не может разобрать индексы репозиториев (это состояние гостевой системы, не установщика)"
+    cat >&2 <<'APT_FIX'
+
+Почините apt и запустите установщик снова:
+
+  df -h /var; df -i /var          # место и inode — самая частая причина
+  sudo rm -rf /var/lib/apt/lists/*
+  sudo apt-get clean
+  sudo dpkg --configure -a
+  sudo apt-get -f install
+  sudo apt-get update
+
+Если «Splitting up» остался:
+  sudo apt-get install --reinstall -y apt gpgv
+  date -u                          # часы не должны убегать вперёд/назад
+
+Обойти apt совсем (файлы поставятся, зависимости — нет):
+  sudo WIFIKIT_SKIP_APT=1 packaging/install.sh
+
+APT_FIX
+    return 1
+  fi
+  echo "$out" | grep -qi "signature verification\|GPG error" && warn "часть репозиториев не проверяется по подписи — apt работает, но с оговоркой"
+  return 0
+}
+
+APT_OK=1
 if command -v apt-get >/dev/null; then
-  apt-get update -qq || warn "apt-get update не прошёл — ставлю из текущих индексов"
-  # shellcheck disable=SC2086
-  apt-get install -y -qq --no-install-recommends $APT_CORE || FAILED+=("часть базовых пакетов не установилась")
-  # shellcheck disable=SC2086
-  apt-get install -y -qq --no-install-recommends $APT_QT 2>/dev/null || warn "Qt-библиотеки xcb не встали — GUI может не запуститься"
+  if [ "${WIFIKIT_SKIP_APT:-0}" = "1" ]; then
+    warn "WIFIKIT_SKIP_APT=1 — системные пакеты не трогаю"
+    APT_OK=0
+  elif ! apt_healthy; then
+    die "сначала почините apt (команды выше), иначе hcxdumptool 7 и Qt поставить нечем"
+  fi
+  if [ "$APT_OK" = "1" ]; then
+    # shellcheck disable=SC2086
+    apt-get install -y -qq --no-install-recommends $APT_CORE || FAILED+=("часть базовых пакетов не установилась")
+    # shellcheck disable=SC2086
+    apt-get install -y -qq --no-install-recommends $APT_QT 2>/dev/null || warn "Qt-библиотеки xcb не встали — GUI может не запуститься"
+    for polkit_pkg in policykit-1 pkexec; do
+      if ! command -v pkexec >/dev/null; then
+        apt-get install -y -qq --no-install-recommends "$polkit_pkg" >/dev/null 2>&1 || true
+      fi
+    done
+    command -v pkexec >/dev/null || FAILED+=("нет pkexec — демон не сможет запросить права")
+  fi
 elif command -v pacman >/dev/null; then
   pacman -Sy --needed --noconfirm aircrack-ng hostapd dnsmasq nftables iw iproute2 \
     networkmanager rfkill polkit hashcat hcxtools usbutils gcc make libpcap git python \
