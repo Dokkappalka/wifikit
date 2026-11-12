@@ -99,10 +99,22 @@ class StylingTest(unittest.TestCase):
         self.assertIn("Path.home() / \"wifikit-projects\"", main)
         self.assertIn("base=str(self.projects_root())", main)
 
-    def test_combo_popup_not_white(self):
+    def test_no_private_qt_selectors(self):
+        """Приватные виджеты в QSS не поддерживаются и роняют QStyleSheetStyle."""
         theme = (APP / "theme.py").read_text()
-        self.assertIn("QComboBox QFrame", theme)
-        self.assertIn("QComboBoxPrivateContainer", theme)
+        for private in ("QComboBoxPrivateContainer {", "QComboBox QFrame {", "QListView {"):
+            self.assertNotIn(private, theme, f"стилизация приватного виджета: {private}")
+
+    def test_popup_dark_via_palette(self):
+        # цвет попапа берётся из палитры, а не из приватных селекторов
+        theme = (APP / "theme.py").read_text()
+        self.assertIn("QPalette.Base", theme)
+        self.assertIn("QComboBox QAbstractItemView", theme)
+
+    def test_no_unsupported_css_properties(self):
+        theme = (APP / "theme.py").read_text()
+        for css in ("font-variant-numeric", "text-transform"):
+            self.assertNotIn(css, theme, f"Qt не поддерживает {css}")
 
     def test_labels_transparent(self):
         theme = (APP / "theme.py").read_text()
