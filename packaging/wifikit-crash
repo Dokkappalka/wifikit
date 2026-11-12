@@ -1,99 +1,124 @@
 #!/bin/sh
-# wifikit-crash: собрать следы падения БЕЗ gdb (он ломается на aarch64:
-# «sect_index_text not initialized»).
+# wifikit-crash: нативный стек падения без gdb (gdb 12.1 на aarch64 ломается).
 #
-# Источники:
-#   1) dmesg — ядро пишет «segfault at … ip … in <библиотека>[+offset]»;
-#   2) /var/crash — apport на Ubuntu уже сохранил стек, если он включён;
-#   3) два прогона GUI подряд: обычный и безопасный (WIFIKIT_PLAIN=1).
+# Что делает:
+#   1) разбирает уже сохранённые apport-дампы (/var/crash/*.crash) — внутри core;
+#   2) дополнительно ловит свежий core через core_pattern;
+#   3) печатает верхние кадры eu-stack: видно библиотеку и функцию.
 #
-# Запуск: sudo wifikit-crash [секунды на режим]
+# Требуется: sudo apt install -y elfutils binutils
+# Запуск:    sudo wifikit-crash [секунды]
 set +e
 
 PREFIX="${WIFIKIT_PREFIX:-/usr/lib/wifikit}"
 PY="${WIFIKIT_PY:-$PREFIX/venv/bin/python}"
 [ -x "$PY" ] || PY="$(command -v python3)"
-SECONDS_WAIT="${1:-120}"
-OUT="${2:-${SUDO_USER:+/home/$SUDO_USER}/wifikit-crash.txt}"
-OUT="${OUT:-$HOME/wifikit-crash.txt}"
+WAIT="${1:-120}"
+USER_HOME=""
+[ -n "${SUDO_USER:-}" ] && USER_HOME="$(getent passwd "$SUDO_USER" | cut -d: -f6)"
+OUT="${USER_HOME:-$HOME}/wifikit-crash.txt"
+WORK=/var/tmp/wifikit-dumps
+mkdir -p "$WORK"
 
 say() { printf '\n===== %s =====\n' "$*"; }
 
-: >"$OUT" 2>/dev/null || { OUT="$HOME/wifikit-crash.txt"; : >"$OUT"; }
+frames() {
+  core="$1"; label="$2"
+  [ -s "$core" ] || { echo "нет файла $core"; return; }
+  echo "--- $label: $(basename "$core") ($(du -h "$core" | cut -f1)) ---"
+  if command -v eu-stack >/dev/null; then
+    eu-stack --core "$core" -n 25 2>&1 | head -40
+  else
+    echo "eu-stack нет: sudo apt install -y elfutils"
+  fi
+}
+
+: >"$OUT" 2>/dev/null || OUT="$HOME/wifikit-crash.txt"
+: >"$OUT"
 
 {
-  say "когда"
+  say "время и система"
   date -u
   uname -a
+  if [ -r /etc/os-release ]; then . /etc/os-release; echo "$PRETTY_NAME"; fi
 
-  say "dmesg: падения (ядро называет библиотеку и смещение)"
-  if dmesg >/dev/null 2>&1; then
-    dmesg | grep -iE "segfault|protection fault|trap" | tail -20
-    echo "--- строки «in <lib>.so» ---"
-    dmesg | grep -iE " in [a-zA-Z0-9_.+-]+\.so" | tail -20
+  say "apport: что уже сохранено"
+  ls -la /var/crash 2>/dev/null | head -10
+  for f in /var/crash/*.crash; do
+    [ -f "$f" ] || continue
+    printf '%s: %s %s\n' "$(basename "$f")" "$(grep -m1 '^Signal:' "$f")" "$(grep -m1 '^ExecutablePath:' "$f")"
+  done
+
+  say "разбор core из apport-дампов"
+  for f in /var/crash/*wifikit*.crash; do
+    [ -f "$f" ] || continue
+    name=$(basename "$f" .crash)
+    core="$WORK/$name.core"
+    # apport хранит core как gzip, упакованный в base64: сначала base64, потом gunzip
+    awk '/^CoreDump:/{flag=1; next}
+         flag && /^[A-Za-z][A-Za-z0-9_.-]*: /{flag=0}
+         flag{print}' "$f" | tr -d ' \t' | base64 -d >"$core.raw" 2>/dev/null
+    if gzip -t "$core.raw" 2>/dev/null; then
+      gzip -dc "$core.raw" >"$core" 2>/dev/null
+    else
+      mv "$core.raw" "$core"
+    fi
+    rm -f "$core.raw"
+    if [ -s "$core" ] && [ "$(head -c4 "$core")" = "$(printf '\177ELF')" ]; then
+      frames "$core" "apport $(basename "$f")"
+    else
+      echo "--- $(basename "$f"): core не извлёкся ---"
+      rm -f "$core"
+    fi
+  done
+
+  say "свежий core"
+  old_pattern=$(cat /proc/sys/kernel/core_pattern 2>/dev/null)
+  echo "core_pattern сейчас: $old_pattern"
+  if echo "$WORK/core.%e.%p" >/proc/sys/kernel/core_pattern 2>/dev/null; then
+    ulimit -c unlimited 2>/dev/null
+    echo "запуск GUI на ${WAIT}с (нужен дисплей пользователя: DISPLAY=:0)"
+    DISPLAY="${DISPLAY:-:0}" timeout "$WAIT" "$PY" "$PREFIX/app/main.py" >/tmp/wifikit-crash-run.log 2>&1
+    rc=$?
+    case "$rc" in
+      124) echo "результат: жив (остановлен по таймауту)" ;;
+      0)   echo "результат: вышел сам, код 0" ;;
+      135) echo "результат: SIGBUS (7)" ;;
+      139) echo "результат: SIGSEGV (11)" ;;
+      *)   echo "результат: код $rc" ;;
+    esac
+    tail -10 /tmp/wifikit-crash-run.log
+    newest=$(ls -t "$WORK"/core.* 2>/dev/null | head -1)
+    [ -n "$newest" ] && frames "$newest" "свежий core" || echo "core не создан"
+    echo "$old_pattern" >/proc/sys/kernel/core_pattern 2>/dev/null
   else
-    echo "(dmesg требует root — запустите через sudo)"
+    echo "core_pattern не изменить (нужен root)"
   fi
 
-  say "apport: готовые отчёты о падениях"
-  if [ -d /var/crash ]; then
-    ls -la /var/crash 2>/dev/null | head -20
-    for f in /var/crash/*.crash; do
-      [ -f "$f" ] || continue
-      echo "--- $f ---"
-      grep -E "^(ProblemType|ExecutablePath|Signal|ProcCmdline|Date):" "$f" | head -10
-      sed -n '/^StacktraceTop:/,/^[A-Z][A-Za-z]*:/p' "$f" | head -25
-    done
-  else
-    echo "каталога /var/crash нет (apport выключен)"
-  fi
+  say "как читать кадры"
+  echo "libQt6Widgets.so.6 — виджеты/отрисовка; libQt6Gui.so.6 — шрифты, палитра, картинки;"
+  echo "libQt6Core.so.6 — события и метаобъекты; libc/ld.so — память и загрузчик;"
+  echo "shiboken/PyEval — биндинги Python."
 
-  say "core-дампы"
-  cat /proc/sys/kernel/core_pattern 2>/dev/null
-  ls -la /var/lib/systemd/coredump 2>/dev/null | tail -5
-  command -v eu-stack >/dev/null && echo "eu-stack есть" || echo "eu-stack нет (sudo apt install elfutils)"
-
-  say "Qt в окружении GUI"
+  say "окружение Qt"
   "$PY" - <<'PYEOF'
 import os, sys
 try:
     import PySide6
+    print("PySide6", PySide6.__version__, "| python", sys.version.split()[0])
     base = os.path.join(os.path.dirname(PySide6.__file__), "Qt", "lib")
-    print("PySide6", PySide6.__version__, "python", sys.version.split()[0])
     for name in ("libQt6Core.so.6", "libQt6Gui.so.6", "libQt6Widgets.so.6"):
         path = os.path.join(base, name)
-        print(f"  {name}: {'есть, ' + str(os.path.getsize(path)) + ' байт' if os.path.exists(path) else 'НЕТ'}")
+        print(f"  {name}: {os.path.getsize(path) if os.path.exists(path) else 'НЕТ'}")
 except Exception as exc:
     print("PySide6:", exc)
 PYEOF
-
-  say "glibc / дистрибутив"
   ldd --version 2>/dev/null | head -1
-  . /etc/os-release 2>/dev/null && echo "$PRETTY_NAME"
-
-  for mode in normal plain; do
-    if [ "$mode" = "plain" ]; then
-      say "прогон: безопасный режим (без QSS), ${SECONDS_WAIT} с"
-      WIFIKIT_PLAIN=1 timeout "$SECONDS_WAIT" "$PY" "$PREFIX/app/main.py" >"/tmp/wifikit-run-$mode.log" 2>&1
-    else
-      say "прогон: обычный режим, ${SECONDS_WAIT} с"
-      timeout "$SECONDS_WAIT" "$PY" "$PREFIX/app/main.py" >"/tmp/wifikit-run-$mode.log" 2>&1
-    fi
-    rc=$?
-    if [ "$rc" = "124" ]; then
-      echo "результат: жив (остановлен по таймауту)"
-    else
-      echo "результат: код $rc (падение)"
-    fi
-    tail -20 "/tmp/wifikit-run-$mode.log"
-  done
 
   say "хвост gui.log"
-  tail -40 "${SUDO_USER:+/home/$SUDO_USER}/.local/state/wifikit/gui.log" 2>/dev/null \
-    || tail -40 "$HOME/.local/state/wifikit/gui.log" 2>/dev/null
+  tail -30 "${USER_HOME:-$HOME}/.local/state/wifikit/gui.log" 2>/dev/null
 } >>"$OUT" 2>&1
 
 echo "отчёт: $OUT"
 echo
-echo "главное:"
-grep -E "segfault|in lib|результат:" "$OUT" | tail -12
+sed -n '/разбор core из apport-дампов/,/как читать кадры/p' "$OUT" | head -50

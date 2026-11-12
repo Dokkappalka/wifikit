@@ -123,14 +123,45 @@ if [ "$QT_OK" -eq 0 ] && command -v apt-get >/dev/null; then
   done
 fi
 qt_smoke() {
-  # настоящий запуск Qt без окна: ловит и битые .so, и отсутствующие xcb-плагины
+  # 5 секунд живого цикла событий с теми же виджетами, что в приложении:
+  # ловит не только битые .so, но и падения при отрисовке/таймерах
   QT_QPA_PLATFORM=offscreen "$1" - >/tmp/wifikit-qt-smoke.log 2>&1 <<'PYEOF'
-from PySide6.QtWidgets import QApplication, QLabel
-app = QApplication([])
-label = QLabel("ok")
-label.resize(40, 16)
-label.show()
-print("qt-ok")
+import sys
+from PySide6.QtCore import QTimer
+from PySide6.QtWidgets import (QApplication, QComboBox, QLabel, QPlainTextEdit,
+                               QProgressBar, QTableWidget, QVBoxLayout, QWidget)
+
+app = QApplication(sys.argv)
+host = QWidget()
+layout = QVBoxLayout(host)
+combo = QComboBox()
+combo.addItems(["один", "два", "три"])
+table = QTableWidget(8, 3)
+table.setCellWidget(0, 0, QComboBox())
+table.setCellWidget(1, 0, QLabel("ячейка"))
+layout.addWidget(QLabel("проверка"))
+layout.addWidget(combo)
+layout.addWidget(table)
+layout.addWidget(QProgressBar())
+layout.addWidget(QPlainTextEdit("журнал"))
+host.resize(600, 400)
+host.show()
+
+state = {"ticks": 0}
+
+
+def tick():
+    state["ticks"] += 1
+    combo.setCurrentIndex(state["ticks"] % 3)
+    table.setItem(0, 1, None)
+
+
+timer = QTimer()
+timer.timeout.connect(tick)
+timer.start(100)
+QTimer.singleShot(5000, app.quit)
+app.exec()
+print("qt-ok ticks", state["ticks"])
 PYEOF
   rc=$?
   if grep -q "qt-ok" /tmp/wifikit-qt-smoke.log; then
@@ -158,11 +189,18 @@ if [ "$QT_OK" -eq 0 ]; then
   PY="$PREFIX/venv/bin/python"
   say "   GUI будет запускаться этим интерпретатором: $PY"
   if ! qt_smoke "$PY"; then
-    warn "   Qt падает — переустанавливаю на проверенную ветку 6.8 (частый случай на 22.04)"
-    if install_pyside_venv "6.8.3" && qt_smoke "$PY"; then
-      say "   на 6.8.3 Qt работает"
-    else
-      FAILED+=("Qt не запускается даже на 6.8.3 — запустите wifikit-doctor и пришлите отчёт")
+    warn "   установленная версия Qt не проходит пробу — подбираю рабочую"
+    QT_FIXED=0
+    for candidate in 6.8.3 6.7.3 6.6.3.1 6.5.3; do
+      say "   пробую PySide6 $candidate"
+      if install_pyside_venv "$candidate" && qt_smoke "$PY"; then
+        say "   работает на PySide6 $candidate"
+        QT_FIXED=1
+        break
+      fi
+    done
+    if [ "$QT_FIXED" -eq 0 ]; then
+      FAILED+=("ни одна версия PySide6 не проходит пробу — пришлите вывод wifikit-crash")
     fi
   else
     say "   проверка Qt: ок"

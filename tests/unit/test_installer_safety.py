@@ -45,6 +45,25 @@ class InstallerTest(unittest.TestCase):
         self.assertIn("wifikit-doctor", self.text)
 
 
+class CrashToolTest(unittest.TestCase):
+    def setUp(self):
+        self.text = (ROOT / "packaging" / "wifikit-crash").read_text()
+
+    def test_extracts_apport_core(self):
+        # apport хранит core как gzip в base64: без gunzip eu-stack получит мусор
+        self.assertIn("CoreDump:", self.text)
+        self.assertIn("base64 -d", self.text)
+        self.assertIn("gzip -dc", self.text)
+
+    def test_uses_eu_stack_not_gdb(self):
+        self.assertIn("eu-stack", self.text)
+        self.assertNotIn("gdb -q -batch", self.text)
+
+    def test_explains_signal_codes(self):
+        for code in ("SIGBUS", "SIGSEGV"):
+            self.assertIn(code, self.text)
+
+
 class DoctorTest(unittest.TestCase):
     def test_exists_and_executable(self):
         self.assertTrue(DOCTOR.is_file())
