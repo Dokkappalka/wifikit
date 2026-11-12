@@ -75,6 +75,16 @@ class NoAdviceTest(unittest.TestCase):
         self.assertNotIn('"diag"', pages)
 
 
+class SafeModeTest(unittest.TestCase):
+    def test_rules(self):
+        from app.safe import decide_safe_mode
+
+        self.assertTrue(decide_safe_mode("1", False))
+        self.assertFalse(decide_safe_mode("0", True))
+        self.assertTrue(decide_safe_mode(None, True))
+        self.assertFalse(decide_safe_mode(None, False))
+
+
 class StylingTest(unittest.TestCase):
     def test_dark_palette_defined_and_applied(self):
         theme = (APP / "theme.py").read_text()

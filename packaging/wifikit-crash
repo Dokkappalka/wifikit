@@ -1,39 +1,99 @@
 #!/bin/sh
-# wifikit-crash: запустить GUI под gdb и сохранить C++-бэктрейс.
+# wifikit-crash: собрать следы падения БЕЗ gdb (он ломается на aarch64:
+# «sect_index_text not initialized»).
 #
-# Нужен, когда приложение падает по SIGSEGV/SIGBUS внутри Qt: Python-лог
-# (faulthandler) показывает только app.exec(), а место падения видно лишь
-# в нативном стеке.
+# Источники:
+#   1) dmesg — ядро пишет «segfault at … ip … in <библиотека>[+offset]»;
+#   2) /var/crash — apport на Ubuntu уже сохранил стек, если он включён;
+#   3) два прогона GUI подряд: обычный и безопасный (WIFIKIT_PLAIN=1).
 #
-# Запуск: wifikit-crash [секунды]      (по умолчанию ждём падения 180 с)
+# Запуск: sudo wifikit-crash [секунды на режим]
 set +e
 
 PREFIX="${WIFIKIT_PREFIX:-/usr/lib/wifikit}"
 PY="${WIFIKIT_PY:-$PREFIX/venv/bin/python}"
 [ -x "$PY" ] || PY="$(command -v python3)"
-TIMEOUT="${1:-180}"
-OUT="${2:-$HOME/wifikit-crash.txt}"
+SECONDS_WAIT="${1:-120}"
+OUT="${2:-${SUDO_USER:+/home/$SUDO_USER}/wifikit-crash.txt}"
+OUT="${OUT:-$HOME/wifikit-crash.txt}"
 
-if ! command -v gdb >/dev/null; then
-  cat >&2 <<'EOF'
-gdb не установлен. Поставить:
-  sudo apt install -y gdb
-EOF
-  exit 2
-fi
+say() { printf '\n===== %s =====\n' "$*"; }
 
-echo "запускаю GUI под gdb; ожидание падения до ${TIMEOUT}с"
+: >"$OUT" 2>/dev/null || { OUT="$HOME/wifikit-crash.txt"; : >"$OUT"; }
+
+{
+  say "когда"
+  date -u
+  uname -a
+
+  say "dmesg: падения (ядро называет библиотеку и смещение)"
+  if dmesg >/dev/null 2>&1; then
+    dmesg | grep -iE "segfault|protection fault|trap" | tail -20
+    echo "--- строки «in <lib>.so» ---"
+    dmesg | grep -iE " in [a-zA-Z0-9_.+-]+\.so" | tail -20
+  else
+    echo "(dmesg требует root — запустите через sudo)"
+  fi
+
+  say "apport: готовые отчёты о падениях"
+  if [ -d /var/crash ]; then
+    ls -la /var/crash 2>/dev/null | head -20
+    for f in /var/crash/*.crash; do
+      [ -f "$f" ] || continue
+      echo "--- $f ---"
+      grep -E "^(ProblemType|ExecutablePath|Signal|ProcCmdline|Date):" "$f" | head -10
+      sed -n '/^StacktraceTop:/,/^[A-Z][A-Za-z]*:/p' "$f" | head -25
+    done
+  else
+    echo "каталога /var/crash нет (apport выключен)"
+  fi
+
+  say "core-дампы"
+  cat /proc/sys/kernel/core_pattern 2>/dev/null
+  ls -la /var/lib/systemd/coredump 2>/dev/null | tail -5
+  command -v eu-stack >/dev/null && echo "eu-stack есть" || echo "eu-stack нет (sudo apt install elfutils)"
+
+  say "Qt в окружении GUI"
+  "$PY" - <<'PYEOF'
+import os, sys
+try:
+    import PySide6
+    base = os.path.join(os.path.dirname(PySide6.__file__), "Qt", "lib")
+    print("PySide6", PySide6.__version__, "python", sys.version.split()[0])
+    for name in ("libQt6Core.so.6", "libQt6Gui.so.6", "libQt6Widgets.so.6"):
+        path = os.path.join(base, name)
+        print(f"  {name}: {'есть, ' + str(os.path.getsize(path)) + ' байт' if os.path.exists(path) else 'НЕТ'}")
+except Exception as exc:
+    print("PySide6:", exc)
+PYEOF
+
+  say "glibc / дистрибутив"
+  ldd --version 2>/dev/null | head -1
+  . /etc/os-release 2>/dev/null && echo "$PRETTY_NAME"
+
+  for mode in normal plain; do
+    if [ "$mode" = "plain" ]; then
+      say "прогон: безопасный режим (без QSS), ${SECONDS_WAIT} с"
+      WIFIKIT_PLAIN=1 timeout "$SECONDS_WAIT" "$PY" "$PREFIX/app/main.py" >"/tmp/wifikit-run-$mode.log" 2>&1
+    else
+      say "прогон: обычный режим, ${SECONDS_WAIT} с"
+      timeout "$SECONDS_WAIT" "$PY" "$PREFIX/app/main.py" >"/tmp/wifikit-run-$mode.log" 2>&1
+    fi
+    rc=$?
+    if [ "$rc" = "124" ]; then
+      echo "результат: жив (остановлен по таймауту)"
+    else
+      echo "результат: код $rc (падение)"
+    fi
+    tail -20 "/tmp/wifikit-run-$mode.log"
+  done
+
+  say "хвост gui.log"
+  tail -40 "${SUDO_USER:+/home/$SUDO_USER}/.local/state/wifikit/gui.log" 2>/dev/null \
+    || tail -40 "$HOME/.local/state/wifikit/gui.log" 2>/dev/null
+} >>"$OUT" 2>&1
+
 echo "отчёт: $OUT"
-
-# SIGPIPE/SIGSEGV ловим, backtrace по всем потокам
-gdb -q -batch \
-  -ex "set pagination off" \
-  -ex "set print thread-events off" \
-  -ex "handle SIGPIPE nostop noprint pass" \
-  -ex "run" \
-  -ex "thread apply all bt 25" \
-  --args "$PY" "$PREFIX/app/main.py" 2>&1 | tee "$OUT" | tail -40
-
 echo
-echo "готово: $OUT"
-echo "Пришлите этот файл целиком — по нему видно функцию Qt, в которой падает."
+echo "главное:"
+grep -E "segfault|in lib|результат:" "$OUT" | tail -12

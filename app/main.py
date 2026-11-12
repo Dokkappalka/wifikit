@@ -19,7 +19,8 @@ from app import i18n
 from app.dialogs import ErrorDialog, TextDialog
 from app.pages import PAGES, CapturePage, EvilPage, LogPage, State
 from app.remote import Remote, Task
-from app.safe import expect_dict, gui_log_path, install_hooks, safe_callback, safe_slot
+from app.safe import (decide_safe_mode, expect_dict, gui_log_path, install_hooks, mark_clean,
+                      mark_running, previous_crash, safe_callback, safe_slot)
 from app.theme import QSS, dark_palette
 
 VERSION = "0.1.0"
@@ -416,11 +417,29 @@ def main() -> int:
     font.setFamilies(["Inter", "Noto Sans", "DejaVu Sans"])
     font.setPointSize(10)
     app.setFont(font)
-    if os.environ.get("WIFIKIT_PLAIN") != "1":
+    # WIFIKIT_PLAIN=1 — принудительно без стилей, =0 — принудительно со стилями,
+    # не задано — без стилей только если прошлый запуск упал нативно
+    forced = os.environ.get("WIFIKIT_PLAIN")
+    crashed_before = previous_crash()
+    safe_mode = decide_safe_mode(forced, crashed_before)
+    if not safe_mode:
         app.setStyleSheet(QSS)
+    mark_running()
     window = MainWindow()
     window.show()
-    return app.exec()
+    if safe_mode and forced is None:
+        window.notify_error(
+            "Прошлый запуск завершился падением",
+            "Стили отключены, чтобы приложение осталось рабочим (Fusion + тёмная палитра).\n\n"
+            "Вернуть оформление: запустить WIFIKIT_PLAIN=0 wifikit.\n"
+            "Если после этого снова упадёт — пришлите ~/.local/state/wifikit/gui.log "
+            "и отчёт wifikit-crash.",
+            kind="warn",
+            subtitle="Безопасный режим",
+        )
+    code = app.exec()
+    mark_clean()
+    return code
 
 
 if __name__ == "__main__":
