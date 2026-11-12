@@ -183,31 +183,78 @@ class Remote(QObject):
                 self._client = None
 
 
-class Task(QObject):
-    """Один вызов демона в фоновом потоке.
+class _Relay(QObject):
+    """Единственный QObject для перехода «рабочий поток → поток GUI».
 
-    Результат нельзя отдавать сигналом прямо из рабочего потока: получатели —
-    обычные Python-функции, Qt соединяет их напрямую, и обработчик начинает
-    менять виджеты из чужого потока. Это не «иногда глючит», а порча памяти и
-    SIGSEGV через некоторое время. Поэтому воркер эмитит внутренние сигналы,
-    которые через QueuedConnection попадают в поток GUI, и только оттуда
-    выходят наружу как `done`/`failed`.
+    Раньше на каждый вызов демона создавался новый QObject-Task. Он удалялся
+    сборщиком сразу после обработки результата, хотя в очереди событий ещё мог
+    лежать отправленный из воркера сигнал. Qt доставлял его уже освобождённому
+    объекту — падение в QObject::event из sendPostedEvents (это и было в core).
+    Один долгоживущий объект убирает эту гонку целиком.
     """
 
-    done = Signal(object)
-    failed = Signal(str, str)
+    _deliver = Signal(object)
 
-    _result = Signal(object)
-    _error = Signal(str, str)
+    def __init__(self) -> None:
+        super().__init__()
+        self._deliver.connect(self._run, Qt.QueuedConnection)
+
+    @Slot(object)
+    def _run(self, fn) -> None:
+        try:
+            fn()
+        except Exception:  # noqa: BLE001 — падение обработчика не должно ронять цикл
+            from app.safe import gui_log_path
+
+            with open(gui_log_path(), "a", encoding="utf-8") as handle:
+                import traceback
+
+                handle.write("== обработчик результата ==\n" + traceback.format_exc() + "\n")
+
+    def to_gui(self, fn) -> None:
+        self._deliver.emit(fn)
+
+
+_relay: _Relay | None = None
+
+
+def relay() -> _Relay:
+    global _relay
+    if _relay is None:
+        _relay = _Relay()
+    return _relay
+
+
+class _Signal:
+    """Минимальная замена Qt-сигналу: список обработчиков и вызов по порядку."""
+
+    def __init__(self) -> None:
+        self._slots: list = []
+
+    def connect(self, fn) -> None:
+        self._slots.append(fn)
+
+    def emit(self, *args) -> None:
+        for fn in list(self._slots):
+            fn(*args)
+
+
+class Task:
+    """Один вызов демона в фоновом потоке.
+
+    Не QObject: результат передаётся в поток GUI через долгоживущий relay,
+    поэтому удалять нечего и освобождённых объектов в очереди событий не бывает.
+    """
+
     _running: set["Task"] = set()
 
     def __init__(self, remote: Remote, method: str, **params):
-        super().__init__()
         self.remote = remote
         self.method = method
         self.params = params
-        self._result.connect(self._on_result, Qt.QueuedConnection)
-        self._error.connect(self._on_error, Qt.QueuedConnection)
+        self.done = _Signal()
+        self.failed = _Signal()
+        self._hub = relay()
 
     def start(self) -> "Task":
         Task._running.add(self)
@@ -216,18 +263,19 @@ class Task(QObject):
 
     def _run(self) -> None:
         try:
-            self._result.emit(self.remote.call(self.method, **self.params))
+            data = self.remote.call(self.method, **self.params)
         except WilfiError as exc:
-            self._error.emit(str(exc), exc.detail or exc.code)
+            self._fail(str(exc), exc.detail or exc.code)
         except Exception as exc:  # noqa: BLE001
-            self._error.emit("вызов не прошёл", str(exc))
+            self._fail("вызов не прошёл", str(exc))
+        else:
+            self._hub.to_gui(lambda: self._finish(self.done, data))
+
+    def _fail(self, message: str, detail: str) -> None:
+        self._hub.to_gui(lambda: self._finish(self.failed, message, detail))
+
+    def _finish(self, signal: _Signal, *args) -> None:
+        try:
+            signal.emit(*args)
         finally:
             Task._running.discard(self)
-
-    @Slot(object)
-    def _on_result(self, data) -> None:
-        self.done.emit(data)
-
-    @Slot(str, str)
-    def _on_error(self, message: str, detail: str) -> None:
-        self.failed.emit(message, detail)

@@ -67,6 +67,64 @@ class TaskThreadAffinityTest(unittest.TestCase):
         text = (ROOT / "app" / "remote.py").read_text()
         self.assertIn("Qt.QueuedConnection", text)
 
+    def test_task_is_plain_python_object(self):
+        """Задача не должна быть QObject: иначе её удаляют с событиями в очереди."""
+        from PySide6.QtCore import QObject
+
+        from app.remote import Task
+
+        self.assertFalse(issubclass(Task, QObject),
+                         "Task снова QObject — вернётся падение в QObject::event")
+
+    def test_many_tasks_in_a_row(self):
+        """Поток задач подряд: ни одна не теряется и ничего не падает."""
+        from app.remote import Task
+
+        class FakeRemote:
+            def call(self, method, **params):
+                return params.get("n", 0)
+
+        done = []
+        tasks = []
+        for i in range(300):
+            task = Task(FakeRemote(), "ping", n=i)
+            task.done.connect(done.append)
+            tasks.append(task.start())
+
+        deadline = time.monotonic() + 15
+        while len(done) < 300 and time.monotonic() < deadline:
+            self.app.processEvents()
+            time.sleep(0.005)
+        self.assertEqual(len(done), 300, "часть результатов не дошла")
+        self.assertEqual(sorted(done), list(range(300)))
+
+    def test_failure_path_reports_in_gui_thread(self):
+        from core.base import WilfiError
+
+        from app.remote import Task
+
+        class Broken:
+            def call(self, method, **params):
+                raise WilfiError("нет связи", code="offline", detail="сокет занят")
+
+        got = {}
+
+        def on_fail(message, detail):
+            got["thread"] = threading.current_thread().name
+            got["message"] = message
+            got["detail"] = detail
+
+        main = threading.current_thread().name
+        task = Task(Broken(), "ping")
+        task.failed.connect(on_fail)
+        task.start()
+        deadline = time.monotonic() + 5
+        while "message" not in got and time.monotonic() < deadline:
+            self.app.processEvents()
+            time.sleep(0.01)
+        self.assertEqual(got.get("thread"), main)
+        self.assertIn("нет связи", got.get("message", ""))
+
 
 class FaulthandlerEnabledTest(unittest.TestCase):
     """Падение должно оставлять Python-трейсбек, а не только 'core dumped'."""
