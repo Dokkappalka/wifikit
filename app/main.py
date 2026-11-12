@@ -38,6 +38,7 @@ class MainWindow(QMainWindow):
         self.lang = "ru"
         self.setWindowTitle("wifikit")
         self.resize(1180, 780)
+        self.setMinimumSize(1080, 700)
         self._build()
         self._connect()
         self.timer = QTimer(self)
@@ -74,15 +75,23 @@ class MainWindow(QMainWindow):
         bar.addLayout(project_box)
         bar.addStretch(1)
 
-        bar.addWidget(QLabel(i18n.t("adapters.probe")))
+        hint_probe = QLabel(i18n.t("adapters.probe"))
+        hint_probe.setToolTip("Слушает эфир: скан, захват рукопожатия, деаут.\n"
+                              "Нужен monitor-режим и инъекция.")
+        bar.addWidget(hint_probe)
         self.combo_probe = QComboBox()
-        self.combo_probe.setMinimumWidth(190)
+        self.combo_probe.setMinimumWidth(170)
+        self.combo_probe.setToolTip("Адаптер-сенсор: скан, захват рукопожатия, деаут")
         self.combo_probe.currentIndexChanged.connect(lambda: self._assign("probe"))
         bar.addWidget(self.combo_probe)
 
-        bar.addWidget(QLabel(i18n.t("adapters.ap")))
+        hint_ap = QLabel(i18n.t("adapters.ap"))
+        hint_ap.setToolTip("Вещает клон точки с порталом.\n"
+                           "Нужен режим точки доступа (nl80211). Для захвата не нужен.")
+        bar.addWidget(hint_ap)
         self.combo_ap = QComboBox()
-        self.combo_ap.setMinimumWidth(190)
+        self.combo_ap.setMinimumWidth(170)
+        self.combo_ap.setToolTip("Адаптер фейк-точки: поднимает клон с порталом")
         self.combo_ap.currentIndexChanged.connect(lambda: self._assign("ap"))
         bar.addWidget(self.combo_ap)
 
@@ -315,7 +324,7 @@ class MainWindow(QMainWindow):
         combo = self.combo_probe if role == "probe" else self.combo_ap
         iface = combo.currentData()
         task = Task(self.remote, "adapters_assign", role=role, iface=iface or "")
-        task.failed.connect(safe_callback(self, "adapters_assign:fail", self.show_error))
+        task.failed.connect(safe_callback(self, "adapters_assign:fail", self._assign_failed))
         task.start()
 
     # --------------------------------------------------------------- project
@@ -332,6 +341,11 @@ class MainWindow(QMainWindow):
         task.done.connect(safe_callback(self, "project_new", self._project_ready))
         task.failed.connect(safe_callback(self, "project_new:fail", self.show_error))
         task.start()
+
+    @safe_slot
+    def _assign_failed(self, message: str, detail: str) -> None:
+        self.show_error(message, detail)
+        self._load_adapters()  # вернуть шапку к тому, что реально назначено
 
     @staticmethod
     def projects_root() -> Path:

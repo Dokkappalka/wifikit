@@ -121,6 +121,14 @@ class Session:
         }
 
     def adapters_assign(self, role: str, iface: str) -> dict:
+        other = self.ap_iface if role == "probe" else self.probe_iface
+        if iface and iface == other:
+            raise WilfiError(
+                f"{iface} уже занят другой ролью",
+                code="busy",
+                detail="Сенсор и фейк-точка — разные физические адаптеры: один слушает эфир "
+                       "на канале цели, второй вещает клон. Освободите роль, если хотите поменять.",
+            )
         adapter = adapters_mod.get_adapter(iface) if iface else None
         if adapter:
             adapters_mod.ensure_capability(adapter, role)

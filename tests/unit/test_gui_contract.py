@@ -80,6 +80,40 @@ class SessionApiTest(unittest.TestCase):
         missing = [m for m in SESSION_METHODS if not hasattr(session, m)]
         self.assertEqual(missing, [])
 
+    def test_same_adapter_for_both_roles_refused(self):
+        """Один адаптер не может быть и сенсором, и фейк-точкой."""
+        from unittest import mock
+
+        from core import adapters as adapters_mod
+        from core.base import WilfiError
+        from daemon.session import Session
+
+        class FakeAdapter:
+            iface = "wlx_fake"
+            monitor = True
+            ap = True
+            rfkill_blocked = False
+
+        session = Session()
+        with mock.patch.object(adapters_mod, "get_adapter", lambda iface: FakeAdapter()):
+            session.adapters_assign("probe", "wlx_test")
+            with self.assertRaises(WilfiError):
+                session.adapters_assign("ap", "wlx_test")
+            session.adapters_assign("ap", "wlx_other")
+        self.assertEqual((session.probe_iface, session.ap_iface), ("wlx_test", "wlx_other"))
+
+    def test_role_cleared_by_empty_selection(self):
+        from unittest import mock
+
+        from core import adapters as adapters_mod
+        from daemon.session import Session
+
+        session = Session()
+        with mock.patch.object(adapters_mod, "get_adapter", lambda iface: None):
+            session.adapters_assign("probe", "wlx_test")
+            session.adapters_assign("probe", "")
+        self.assertEqual(session.probe_iface, "")
+
     def test_mutating_methods_are_declared(self):
         from daemon import rpc
 
