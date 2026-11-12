@@ -45,6 +45,33 @@ class InstallerTest(unittest.TestCase):
         self.assertIn("wifikit-doctor", self.text)
 
 
+class ReinstallSafetyTest(unittest.TestCase):
+    """Неудачный pip не должен ломать уже работающую установку."""
+
+    def setUp(self):
+        self.text = (ROOT / "packaging" / "install.sh").read_text()
+
+    def test_skips_pip_when_venv_works(self):
+        self.assertIn("venv_ready", self.text)
+        self.assertIn("pip не нужен", self.text)
+
+    def test_checks_network_before_pip(self):
+        self.assertIn("net_ok", self.text)
+        self.assertIn("pypi.org", self.text)
+
+    def test_version_swap_is_atomic(self):
+        # новая версия собирается в venv.new и подменяет рабочую только при успехе
+        self.assertIn("venv.new", self.text)
+        self.assertIn('mv "$target" "$PREFIX/venv"', self.text)
+        self.assertNotIn("--force-reinstall", self.text)
+
+    def test_reports_network_failure_honestly(self):
+        self.assertIn("сеть/DNS, а не сборка", self.text)
+
+    def test_no_broken_venv_left_on_failure(self):
+        self.assertIn('{ rm -rf "$target"; return 1; }', self.text)
+
+
 class CrashToolTest(unittest.TestCase):
     def setUp(self):
         self.text = (ROOT / "packaging" / "wifikit-crash").read_text()

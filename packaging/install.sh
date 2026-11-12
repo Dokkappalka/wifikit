@@ -171,22 +171,59 @@ PYEOF
   return 1
 }
 
+# Уже рабочее окружение не трогаем: переустановка нужна только при смене версии.
+# Иначе неудачный pip (нет DNS, нет места) ломает установку, которая работала.
+venv_ready() {
+  local py="$PREFIX/venv/bin/python"
+  [ -x "$py" ] || return 1
+  "$py" -c "import PySide6, yaml, psutil" >/dev/null 2>&1 || return 1
+  qt_smoke "$py"
+}
+
+net_ok() {
+  getent hosts pypi.org >/dev/null 2>&1 && return 0
+  python3 - <<'PYEOF' >/dev/null 2>&1
+import socket
+socket.setdefaulttimeout(4)
+socket.getaddrinfo("pypi.org", 443)
+PYEOF
+}
+
 install_pyside_venv() {
-  local pin="$1"
+  local pin="$1" target="$PREFIX/venv"
   install -d "$PREFIX"
-  [ -x "$PREFIX/venv/bin/python" ] || "$PY" -m venv "$PREFIX/venv" || return 1
-  "$PREFIX/venv/bin/pip" -q install --upgrade pip
   if [ -n "$pin" ]; then
-    "$PREFIX/venv/bin/pip" -q install --force-reinstall "PySide6==$pin" pyyaml psutil
-  else
-    "$PREFIX/venv/bin/pip" -q install --force-reinstall PySide6 pyyaml psutil
+    # смена версии: собираем рядом и подменяем только после успеха
+    target="$PREFIX/venv.new"
+    rm -rf "$target"
+    "$PY" -m venv "$target" || return 1
+    "$target/bin/pip" -q install --upgrade pip >/dev/null 2>&1
+    "$target/bin/pip" -q install "PySide6==$pin" pyyaml psutil || { rm -rf "$target"; return 1; }
+    rm -rf "$PREFIX/venv.old"
+    [ -d "$PREFIX/venv" ] && mv "$PREFIX/venv" "$PREFIX/venv.old"
+    mv "$target" "$PREFIX/venv"
+    return 0
   fi
+  [ -x "$target/bin/python" ] || "$PY" -m venv "$target" || return 1
+  "$target/bin/pip" -q install --upgrade pip >/dev/null 2>&1
+  "$target/bin/pip" -q install PySide6 pyyaml psutil
 }
 
 if [ "$QT_OK" -eq 0 ]; then
-  say "   системного PySide6 нет — делаю изолированное окружение $PREFIX/venv"
-  install_pyside_venv "" || die "pip не поставил PySide6 (нет сети или нет места?)"
   PY="$PREFIX/venv/bin/python"
+  if venv_ready; then
+    say "   окружение $PREFIX/venv уже рабочее — pip не нужен"
+    say "   версия: $("$PY" -c 'import PySide6; print(PySide6.__version__)' 2>/dev/null)"
+  else
+    say "   системного PySide6 нет — делаю изолированное окружение $PREFIX/venv"
+    if ! net_ok; then
+      die "нет доступа к pypi.org (не разрешается имя). Это сеть/DNS, а не сборка.
+   Проверьте: getent hosts pypi.org
+   Если пусто: sudo systemctl restart systemd-resolved && resolvectl status
+   Без сети установить PySide6 нельзя. Уже установленное приложение продолжает работать."
+    fi
+    install_pyside_venv "" || die "pip не поставил PySide6 (нет сети или нет места?)"
+  fi
   say "   GUI будет запускаться этим интерпретатором: $PY"
   if ! qt_smoke "$PY"; then
     warn "   установленная версия Qt не проходит пробу — подбираю рабочую"
