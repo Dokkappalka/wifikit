@@ -75,11 +75,20 @@ class NoAdviceTest(unittest.TestCase):
         self.assertNotIn('"diag"', pages)
 
 
-class BannerTest(unittest.TestCase):
-    def test_banner_module(self):
-        text = (APP / "banner.py").read_text()
-        self.assertIn("class Banner", text)
-        self.assertIn("def notify", text)
+class DialogsTest(unittest.TestCase):
+    def test_dialogs_keep_reference(self):
+        text = (APP / "dialogs.py").read_text()
+        self.assertIn("class ErrorDialog", text)
+        self.assertIn("class TextDialog", text)
+
+    def test_main_keeps_dialog_refs(self):
+        text = (APP / "main.py").read_text()
+        self.assertIn("self._dialogs.append", text)
+        self.assertNotIn("QInputDialog", text)
+
+    def test_no_layout_shifting_banner(self):
+        text = (APP / "main.py").read_text()
+        self.assertNotIn("Banner(", text)
 
 
 if __name__ == "__main__":

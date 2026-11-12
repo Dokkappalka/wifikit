@@ -127,18 +127,34 @@ class ScanPage(Page):
         lay.addWidget(self.table, 1)
         self.status = muted(i18n.t("scan.empty"))
         lay.addWidget(self.status)
+        # сторож: «сканирую…» не должно висеть вечно, если демон не ответил
+        self._watchdog = QTimer(self)
+        self._watchdog.setSingleShot(True)
+        self._watchdog.timeout.connect(self._scan_stuck)
 
     def _scan(self) -> None:
         self.btn.setEnabled(False)
         self.status.setText("сканирую…")
+        self._watchdog.start(int(self.seconds.value() * 1000) + 12000)
         self.call("scan_start", self._done, self._fail, seconds=float(self.seconds.value()))
 
+    def _scan_stuck(self) -> None:
+        if self.btn.isEnabled():
+            return
+        self.btn.setEnabled(True)
+        self.status.setText("демон не ответил на скан — смотрите журнал")
+        self.show_error("Скан не завершился",
+                        "Демон не вернул результат за отведённое время.\n"
+                        "Проверьте адаптер сенсора и хвост журнала.")
+
     def _fail(self, message: str, detail: str) -> None:
+        self._watchdog.stop()
         self.btn.setEnabled(True)
         self.status.setText(message)
         self.show_error(message, detail)
 
     def _done(self, data: dict) -> None:
+        self._watchdog.stop()
         data = expect_dict(self, "scan_start", data)
         if data is None:
             self.btn.setEnabled(True)

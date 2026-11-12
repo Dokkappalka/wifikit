@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import faulthandler
 import sys
 from pathlib import Path
 
@@ -10,14 +11,14 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QFont
 from PySide6.QtWidgets import (QApplication, QComboBox, QFileDialog, QFrame, QHBoxLayout,
-                               QInputDialog, QLabel, QMainWindow, QPushButton,
-                               QSplitter, QStackedWidget, QVBoxLayout, QWidget)
+                               QLabel, QMainWindow, QPushButton, QStackedWidget, QStatusBar,
+                               QVBoxLayout, QWidget)
 
 from app import i18n
-from app.banner import Banner
-from app.pages import PAGES, CapturePage, EvilPage, LogPage, ScanPage, State
+from app.dialogs import ErrorDialog, TextDialog
+from app.pages import PAGES, CapturePage, EvilPage, LogPage, State
 from app.remote import Remote, Task
-from app.safe import expect_dict, install_hooks, safe_callback, safe_slot
+from app.safe import expect_dict, gui_log_path, install_hooks, safe_callback, safe_slot
 from app.theme import QSS
 
 VERSION = "0.1.0"
@@ -32,9 +33,10 @@ class MainWindow(QMainWindow):
         self.state = State()
         self.pages: dict[str, QWidget] = {}
         self._initialized = False
+        self._dialogs: list[QWidget] = []
         self.lang = "ru"
         self.setWindowTitle("wifikit")
-        self.resize(1180, 760)
+        self.resize(1180, 780)
         self._build()
         self._connect()
         self.timer = QTimer(self)
@@ -48,15 +50,18 @@ class MainWindow(QMainWindow):
     # ------------------------------------------------------------------ layout
     def _build(self) -> None:
         root = QWidget()
+        root.setObjectName("root")
         outer = QVBoxLayout(root)
         outer.setContentsMargins(0, 0, 0, 0)
         outer.setSpacing(0)
 
         top = QFrame()
-        top.setFixedHeight(52)
-        top.setStyleSheet("background:#151821;border-bottom:1px solid #242a36")
+        top.setObjectName("topbar")
+        top.setFixedHeight(54)
         bar = QHBoxLayout(top)
         bar.setContentsMargins(16, 8, 16, 8)
+        bar.setSpacing(10)
+
         project_box = QVBoxLayout()
         project_box.setSpacing(0)
         self.lbl_project = QLabel(i18n.t("project.none"))
@@ -70,14 +75,16 @@ class MainWindow(QMainWindow):
 
         bar.addWidget(QLabel(i18n.t("adapters.probe")))
         self.combo_probe = QComboBox()
-        self.combo_probe.setMinimumWidth(180)
+        self.combo_probe.setMinimumWidth(190)
         self.combo_probe.currentIndexChanged.connect(lambda: self._assign("probe"))
         bar.addWidget(self.combo_probe)
+
         bar.addWidget(QLabel(i18n.t("adapters.ap")))
         self.combo_ap = QComboBox()
-        self.combo_ap.setMinimumWidth(180)
+        self.combo_ap.setMinimumWidth(190)
         self.combo_ap.currentIndexChanged.connect(lambda: self._assign("ap"))
         bar.addWidget(self.combo_ap)
+
         self.btn_refresh = QPushButton(i18n.t("adapters.recheck"))
         self.btn_refresh.clicked.connect(self._load_adapters)
         bar.addWidget(self.btn_refresh)
@@ -86,12 +93,6 @@ class MainWindow(QMainWindow):
         self.btn_lang.clicked.connect(self._toggle_lang)
         bar.addWidget(self.btn_lang)
         outer.addWidget(top)
-
-        self.banner = Banner()
-        banner_wrap = QHBoxLayout()
-        banner_wrap.setContentsMargins(16, 8, 16, 0)
-        banner_wrap.addWidget(self.banner)
-        outer.addLayout(banner_wrap)
 
         body = QHBoxLayout()
         body.setContentsMargins(0, 0, 0, 0)
@@ -121,6 +122,7 @@ class MainWindow(QMainWindow):
             side_lay.addWidget(btn)
             self.nav_buttons[key] = btn
         side_lay.addStretch(1)
+
         bottom = QVBoxLayout()
         bottom.setContentsMargins(10, 0, 10, 0)
         bottom.setSpacing(6)
@@ -130,36 +132,47 @@ class MainWindow(QMainWindow):
         self.btn_open.clicked.connect(self._open_project)
         self.btn_report = QPushButton(i18n.t("project.export"))
         self.btn_report.clicked.connect(self._report)
-        for b in (self.btn_new, self.btn_open, self.btn_report):
-            bottom.addWidget(b)
+        for button in (self.btn_new, self.btn_open, self.btn_report):
+            bottom.addWidget(button)
         side_lay.addLayout(bottom)
         body.addWidget(side)
 
-        split = QSplitter(Qt.Vertical)
         self.stack = QStackedWidget()
         for key, (cls, _) in PAGES.items():
             page = cls(self.remote, self.state)
             self.pages[key] = page
             self.stack.addWidget(page)
-        split.addWidget(self.stack)
-        self.logbox = LogPage(self.remote, self.state)
-        split.addWidget(self.logbox)
-        split.setSizes([620, 120])
-        body.addWidget(split, 1)
+        self.logbox: LogPage = self.pages["log"]  # type: ignore[assignment]
+        body.addWidget(self.stack, 1)
         outer.addLayout(body, 1)
 
         self.setCentralWidget(root)
+
+        status = QStatusBar()
+        status.setSizeGripEnabled(False)
+        status.setFixedHeight(26)
+        self.status_text = QLabel("")
+        self.status_text.setObjectName("muted")
+        status.addWidget(self.status_text, 1)
+        self.setStatusBar(status)
+
         self.pages["scan"].target_changed.connect(self._on_target)  # type: ignore[attr-defined]
         self._show("scan")
 
     # ------------------------------------------------------------------- conn
+    def call(self, method: str, on_done=None, on_fail=None, **params) -> Task:
+        """То же, что Page.call: вызов демона с защищёнными колбэками."""
+        task = Task(self.remote, method, **params)
+        if on_done:
+            task.done.connect(safe_callback(self, method, on_done))
+        task.failed.connect(safe_callback(self, f"{method}:fail", on_fail or self.show_error))
+        return task.start()
+
     @staticmethod
     def _safe_connect(signal, slot) -> None:
-        """Подключение сигнала, которое не валит приложение на экзотических сборках Qt."""
         try:
             signal.connect(slot)
         except TypeError:
-            # запасной путь: Qt-стиль, если PySide6 не принял короткую форму
             signal.connect(slot, Qt.AutoConnection)
 
     def _connect(self) -> None:
@@ -174,21 +187,21 @@ class MainWindow(QMainWindow):
         self.lbl_project.setText("демон: нет связи")
         self._set_offline(True)
         self.notify_error(
-            "Демон не подключён — интерфейс работает, команды недоступны",
+            "Демон не подключён",
             detail,
-            subtitle="Введите пароль в запросе polkit. Если окна не было — запустите: sudo /usr/lib/wifikit/daemon.py",
+            subtitle="Команды недоступны, пока демон не запущен. Пароль спрашивает polkit.",
             action=("Подключиться заново", self._retry_connect),
         )
-        # одна автоматическая попытка переподключения, чтобы не дёргать пользователя
         if not self.retry_timer.isActive():
             self.retry_timer.start()
 
     def _set_offline(self, offline: bool) -> None:
-        """Пока демона нет — кнопки действий выключены, чтобы не врать пользователю."""
-        page = self.pages.get("scan")
-        button = getattr(page, "btn", None)
-        if button is not None:
-            button.setEnabled(not offline)
+        for key in ("scan", "capture", "crack", "evil"):
+            page = self.pages.get(key)
+            for name in ("btn", "btn_start", "btn_up"):
+                button = getattr(page, name, None)
+                if button is not None:
+                    button.setEnabled(not offline)
 
     def _retry_connect(self) -> None:
         if self.remote.is_connected():
@@ -199,7 +212,6 @@ class MainWindow(QMainWindow):
     @safe_slot
     def _after_connect(self) -> None:
         self._log("связь есть")
-        self.banner.hide_banner()
         self.lbl_project.setText("демон подключён")
         self._set_offline(False)
         self._load_adapters()
@@ -211,31 +223,27 @@ class MainWindow(QMainWindow):
         if data is None:
             return
         missing = data.get("missing") or []
-        if not missing:
-            return
-        lines = [f"{d['binary']}\t{d.get('version') or ''}\t{d.get('note') or ''}"
-                 for d in data.get("deps", []) if not d.get("ok")]
-        self.notify_error(
-            f"Не хватает {len(missing)} инструмент(ов): {', '.join(missing)}",
-            "\n".join(lines),
-            kind="warn",
-            subtitle="Часть функций будет недоступна. Установить: sudo packaging/install.sh",
-        )
+        if missing:
+            self._log("не хватает: " + ", ".join(missing))
+            self.status_text.setText("не хватает инструментов: " + ", ".join(missing[:4]))
 
     # ------------------------------------------------------------------ pages
     def _show(self, key: str) -> None:
-        for name, btn in self.nav_buttons.items():
-            btn.setChecked(name == key)
+        for name, button in self.nav_buttons.items():
+            button.setChecked(name == key)
         self.stack.setCurrentWidget(self.pages[key])
         page = self.pages[key]
-        if isinstance(page, (CapturePage, EvilPage)):
-            page.refresh()
-        elif hasattr(page, "refresh"):
-            page.refresh()
+        refresh = getattr(page, "refresh", None)
+        if callable(refresh):
+            refresh()
 
+    @safe_slot
     def _tick(self) -> None:
         if not self.remote.is_connected():
             return
+        if not self._initialized:
+            self._initialized = True
+            self._after_connect()
         evil: EvilPage = self.pages["evil"]  # type: ignore[assignment]
         tasks = [Task(self.remote, "ap_status"), Task(self.remote, "portal_status")]
         holder: dict[str, dict] = {}
@@ -260,7 +268,7 @@ class MainWindow(QMainWindow):
     @safe_slot
     def _on_target(self, ap: dict) -> None:
         self.state.target = ap
-        self.lbl_target.setText(f"{ap['ssid'] or ap['bssid']} · {ap['bssid']}")
+        self.lbl_target.setText(f"{ap.get('ssid') or ap.get('bssid')} · {ap.get('bssid')}")
         capture: CapturePage = self.pages["capture"]  # type: ignore[assignment]
         capture.on_target(ap)
         evil: EvilPage = self.pages["evil"]  # type: ignore[assignment]
@@ -269,8 +277,8 @@ class MainWindow(QMainWindow):
     # --------------------------------------------------------------- adapters
     def _load_adapters(self) -> None:
         task = Task(self.remote, "adapters_list")
-        task.done.connect(self._fill_adapters)
-        task.failed.connect(lambda m, d: self._log(f"{m}: {d}"))
+        task.done.connect(safe_callback(self, "adapters_list", self._fill_adapters))
+        task.failed.connect(safe_callback(self, "adapters_list:fail", self.show_error))
         task.start()
 
     @safe_slot
@@ -282,49 +290,57 @@ class MainWindow(QMainWindow):
             combo.blockSignals(True)
             combo.clear()
             combo.addItem(i18n.t("adapters.none"), "")
-            for adapter in data["adapters"]:
-                usable = adapter["suitable_probe"] if role == "probe" else adapter["suitable_ap"]
-                label = f"{adapter['iface']} · {adapter['driver'] or '?'}"
+            for adapter in data.get("adapters", []):
+                usable = adapter.get("suitable_probe") if role == "probe" else adapter.get("suitable_ap")
+                label = f"{adapter.get('iface')} · {adapter.get('driver') or '?'}"
                 if not usable:
                     label += f" ({i18n.t('adapters.unsuitable')})"
-                combo.addItem(label, adapter["iface"])
+                combo.addItem(label, adapter.get("iface"))
                 if not usable:
-                    index = combo.count() - 1
-                    combo.model().item(index).setEnabled(False)
+                    item = combo.model().item(combo.count() - 1)
+                    if item is not None:
+                        item.setEnabled(False)
             current = data.get(f"{role}_iface")
             if current:
-                idx = combo.findData(current)
-                if idx >= 0:
-                    combo.setCurrentIndex(idx)
+                index = combo.findData(current)
+                if index >= 0:
+                    combo.setCurrentIndex(index)
             combo.blockSignals(False)
-        if not data["adapters"]:
-            self._log("Wi-Fi адаптеров не найдено — подключите USB-адаптер и нажмите «Обновить»")
+        if not data.get("adapters"):
+            self._log("Wi-Fi адаптеров не найдено")
 
+    @safe_slot
     def _assign(self, role: str) -> None:
         combo = self.combo_probe if role == "probe" else self.combo_ap
         iface = combo.currentData()
         task = Task(self.remote, "adapters_assign", role=role, iface=iface or "")
-        task.failed.connect(lambda m, d: self.show_error(m, d))
+        task.failed.connect(safe_callback(self, "adapters_assign:fail", self.show_error))
         task.start()
 
     # --------------------------------------------------------------- project
+    @safe_slot
     def _new_project(self) -> None:
-        name, ok = QInputDialog.getText(self, i18n.t("project.new"), i18n.t("project.name"))
-        if not ok or not name.strip():
+        dialog = TextDialog(self, i18n.t("project.new"), i18n.t("project.name"))
+        self._dialogs.append(dialog)
+        if dialog.exec() != TextDialog.Accepted:
             return
-        task = Task(self.remote, "project_new", name=name.strip())
-        task.done.connect(self._project_ready)
-        task.failed.connect(lambda m, d: self.show_error(m, d))
+        name = dialog.value()
+        if not name:
+            return
+        task = Task(self.remote, "project_new", name=name)
+        task.done.connect(safe_callback(self, "project_new", self._project_ready))
+        task.failed.connect(safe_callback(self, "project_new:fail", self.show_error))
         task.start()
 
+    @safe_slot
     def _open_project(self) -> None:
         base = Path.home() / "wifikit-projects"
         path = QFileDialog.getExistingDirectory(self, i18n.t("project.open"), str(base))
         if not path:
             return
         task = Task(self.remote, "project_open", path=path)
-        task.done.connect(self._project_ready)
-        task.failed.connect(lambda m, d: self.show_error(m, d))
+        task.done.connect(safe_callback(self, "project_open", self._project_ready))
+        task.failed.connect(safe_callback(self, "project_open:fail", self.show_error))
         task.start()
 
     @safe_slot
@@ -338,10 +354,11 @@ class MainWindow(QMainWindow):
         self._load_adapters()
         self._log(f"проект: {data.get('path')}")
 
+    @safe_slot
     def _report(self) -> None:
         task = Task(self.remote, "report_export", fmt="md")
-        task.done.connect(lambda d: self._log(f"отчёт: {d['path']}"))
-        task.failed.connect(lambda m, d: self.show_error(m, d))
+        task.done.connect(safe_callback(self, "report", lambda d: self._log(f"отчёт: {d.get('path')}")))
+        task.failed.connect(safe_callback(self, "report:fail", self.show_error))
         task.start()
 
     # ------------------------------------------------------------------- misc
@@ -354,14 +371,24 @@ class MainWindow(QMainWindow):
 
     def notify_error(self, message: str, detail: str = "", kind: str = "error",
                      subtitle: str = "", action=None) -> None:
-        self.banner.notify(message, detail, kind=kind, subtitle=subtitle, action=action)
+        dialog = ErrorDialog(self, message, detail, kind=kind, subtitle=subtitle, action=action)
+        self._dialogs.append(dialog)
+        dialog.finished.connect(lambda _r, d=dialog: self._forget(d))
+        dialog.exec()
+
+    def _forget(self, dialog: QWidget) -> None:
+        try:
+            self._dialogs.remove(dialog)
+        except ValueError:
+            pass
 
     def show_error(self, message: str, detail: str = "") -> None:
         self.notify_error(message, detail)
 
     def _log(self, line: str) -> None:
-        if hasattr(self, "logbox"):
-            self.logbox.append(line)
+        self.logbox.append(line)
+        if hasattr(self, "status_text"):
+            self.status_text.setText(line[:160])
 
     def closeEvent(self, event) -> None:  # noqa: N802
         if self.remote.is_connected():
@@ -372,6 +399,12 @@ class MainWindow(QMainWindow):
 
 def main() -> int:
     install_hooks()
+    # падение должно давать Python-стек в лог, а не только «core dumped»
+    try:
+        handle = open(gui_log_path(), "a", encoding="utf-8")
+        faulthandler.enable(file=handle, all_threads=True)
+    except OSError:
+        faulthandler.enable(all_threads=True)
     i18n.set_lang("ru")
     app = QApplication(sys.argv)
     app.setApplicationName("wifikit")

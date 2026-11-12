@@ -15,10 +15,18 @@ WARN = "#c9a04f"
 
 QSS = f"""
 * {{ font-family: "Inter", "Noto Sans", "DejaVu Sans", "SF Pro Text", "Segoe UI", sans-serif; font-size: 13px; }}
-QWidget {{ background: {BG}; color: {TEXT}; }}
+QMainWindow, QDialog, QWidget#root {{ background: {BG}; }}
+QLabel, QCheckBox, QRadioButton, QFrame#hsep {{ background: transparent; }}
+QWidget {{ color: {TEXT}; }}
 QFrame#sidebar {{ background: {PANEL}; border-right: 1px solid {BORDER}; }}
+QFrame#topbar {{ background: {PANEL}; border-bottom: 1px solid {BORDER}; }}
+QStatusBar {{ background: {PANEL}; border-top: 1px solid {BORDER}; }}
+QStatusBar QLabel {{ color: #b6bdcb; padding-left: 8px; font-size: 12px; }}
+QPushButton#link {{ background: transparent; border: none; color: {MUTED}; padding: 2px 6px; }}
+QPushButton#link:hover {{ color: {TEXT}; }}
 QLabel#brand {{ font-size: 15px; font-weight: 600; letter-spacing: .04em; }}
 QLabel#muted, QLabel.muted {{ color: {MUTED}; }}
+QLabel:disabled {{ color: #5b6272; }}
 QLabel#h1 {{ font-size: 17px; font-weight: 600; }}
 QLabel#h2 {{ font-size: 11px; color: {MUTED}; text-transform: uppercase; letter-spacing: .1em; }}
 QLabel#mono, QLabel.mono {{ font-family: "JetBrains Mono", "SF Mono", Menlo, monospace; }}
@@ -39,8 +47,14 @@ QPushButton#nav:checked {{ color: {TEXT}; border-left: 3px solid {ACCENT}; backg
 
 QLineEdit, QComboBox, QSpinBox, QPlainTextEdit {{ background: {PANEL}; border: 1px solid {BORDER}; border-radius: 6px; padding: 6px 8px; selection-background-color: {ACCENT_DIM}; }}
 QLineEdit:focus, QComboBox:focus, QSpinBox:focus {{ border-color: {ACCENT_DIM}; }}
-QComboBox::drop-down {{ border: none; width: 18px; }}
-QComboBox QAbstractItemView {{ background: {CARD}; border: 1px solid {BORDER}; selection-background-color: {ACCENT_DIM}; }}
+QComboBox {{ padding: 5px 26px 5px 9px; min-height: 20px; }}
+QComboBox::drop-down {{ subcontrol-origin: padding; subcontrol-position: center right; width: 20px; border: none; background: transparent; }}
+QComboBox::down-arrow {{ image: none; width: 0; height: 0;
+  border-left: 4px solid transparent; border-right: 4px solid transparent; border-top: 5px solid {MUTED}; }}
+QComboBox::down-arrow:on {{ border-top: 5px solid {ACCENT}; }}
+QComboBox QAbstractItemView {{ background: {CARD}; border: 1px solid {BORDER}; padding: 4px; outline: none;
+  selection-background-color: {ACCENT_DIM}; selection-color: {TEXT}; }}
+QComboBox QAbstractItemView::item {{ padding: 5px 8px; min-height: 20px; border-radius: 4px; }}
 
 QTableWidget {{ background: {PANEL}; border: 1px solid {BORDER}; border-radius: 8px; gridline-color: {BORDER}; selection-background-color: {CARD}; selection-color: {TEXT}; }}
 QHeaderView::section {{ background: {PANEL}; color: {MUTED}; font-weight: 600; border: none; border-bottom: 1px solid {BORDER}; padding: 6px; font-size: 11px; text-transform: uppercase; }}

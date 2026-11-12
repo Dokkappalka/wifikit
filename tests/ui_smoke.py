@@ -52,11 +52,12 @@ def main() -> int:
         for _ in range(20):
             app.processEvents()
             time.sleep(0.05)
-        if window.banner.isVisible():
-            problems.append("баннер ошибки висит при живом демоне: " + window.banner.title.text())
+        if not window._initialized:
+            problems.append("GUI не выполнил инициализацию после подключения")
         if not window.pages["scan"].btn.isEnabled():
             problems.append("«Сканировать» выключена при живом демоне")
-        print(f"связь: banner={window.banner.isVisible()}, scan_enabled={window.pages['scan'].btn.isEnabled()}")
+        print(f"связь: initialized={window._initialized}, "
+              f"scan_enabled={window.pages['scan'].btn.isEnabled()}")
 
         for name in ("scan", "capture", "crack", "evil", "log"):
             window._show(name)

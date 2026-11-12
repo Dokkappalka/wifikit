@@ -15,4 +15,7 @@ if [ -z "${DISPLAY:-}" ] && [ -z "${WAYLAND_DISPLAY:-}" ]; then
   exit 1
 fi
 
+# faulthandler: при SIGSEGV в лог попадёт python-стек, а не только «core dumped»
+PYTHONFAULTHANDLER=1
+export PYTHONFAULTHANDLER
 exec "$PY" "$PREFIX/app/main.py" "$@"
