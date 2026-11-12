@@ -220,6 +220,7 @@ install -m 0644 "$ROOT/packaging/io.github.wifikit.policy" /usr/share/polkit-1/a
 install -m 0755 "$ROOT/packaging/wifikit-doctor" /usr/bin/wifikit-doctor
 install -m 0755 "$ROOT/packaging/qt-probe" /usr/bin/qt-probe
 install -m 0755 "$ROOT/packaging/qt-version-probe" /usr/bin/qt-version-probe
+install -m 0755 "$ROOT/packaging/wifikit-crash" /usr/bin/wifikit-crash
 
 say "5/5 проверка"
 "$PY" -c "import PySide6.QtWidgets, yaml, psutil; print('   python:', '$PY')" || FAILED+=("python-зависимости")

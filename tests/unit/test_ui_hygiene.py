@@ -75,6 +75,30 @@ class NoAdviceTest(unittest.TestCase):
         self.assertNotIn('"diag"', pages)
 
 
+class StylingTest(unittest.TestCase):
+    def test_dark_palette_defined_and_applied(self):
+        theme = (APP / "theme.py").read_text()
+        main = (APP / "main.py").read_text()
+        self.assertIn("def dark_palette", theme)
+        self.assertIn("app.setPalette(dark_palette())", main)
+
+    def test_fusion_style(self):
+        self.assertIn('app.setStyle("Fusion")', (APP / "main.py").read_text())
+
+    def test_plain_mode_switch(self):
+        """WIFIKIT_PLAIN=1 — запуск без QSS: так локализуется падение в стилях."""
+        self.assertIn("WIFIKIT_PLAIN", (APP / "main.py").read_text())
+
+    def test_combo_popup_not_white(self):
+        theme = (APP / "theme.py").read_text()
+        self.assertIn("QComboBox QFrame", theme)
+        self.assertIn("QComboBoxPrivateContainer", theme)
+
+    def test_labels_transparent(self):
+        theme = (APP / "theme.py").read_text()
+        self.assertIn("QLabel, QCheckBox, QRadioButton", theme)
+
+
 class DialogsTest(unittest.TestCase):
     def test_dialogs_keep_reference(self):
         text = (APP / "dialogs.py").read_text()

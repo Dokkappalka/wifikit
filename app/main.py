@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import faulthandler
+import os
 import sys
 from pathlib import Path
 
@@ -19,7 +20,7 @@ from app.dialogs import ErrorDialog, TextDialog
 from app.pages import PAGES, CapturePage, EvilPage, LogPage, State
 from app.remote import Remote, Task
 from app.safe import expect_dict, gui_log_path, install_hooks, safe_callback, safe_slot
-from app.theme import QSS
+from app.theme import QSS, dark_palette
 
 VERSION = "0.1.0"
 
@@ -408,11 +409,15 @@ def main() -> int:
     i18n.set_lang("ru")
     app = QApplication(sys.argv)
     app.setApplicationName("wifikit")
+    # Fusion предсказуемее нативных стилей: одинаково рисует и на GTK, и в VM
+    app.setStyle("Fusion")
+    app.setPalette(dark_palette())
     font = QFont()
     font.setFamilies(["Inter", "Noto Sans", "DejaVu Sans"])
     font.setPointSize(10)
     app.setFont(font)
-    app.setStyleSheet(QSS)
+    if os.environ.get("WIFIKIT_PLAIN") != "1":
+        app.setStyleSheet(QSS)
     window = MainWindow()
     window.show()
     return app.exec()

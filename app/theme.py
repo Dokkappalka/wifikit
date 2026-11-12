@@ -13,6 +13,39 @@ ACCENT_DIM = "#2f6b5d"
 DANGER = "#c9604f"
 WARN = "#c9a04f"
 
+def dark_palette():
+    """Тёмная палитра приложения.
+
+    Нужна именно палитра, а не только QSS: непокрытые стилями места (рамка попапа
+    QComboBox, меню, подсказки) берут цвета из палитры. Без неё вокруг списков
+    появляются белые полосы.
+    """
+    from PySide6.QtGui import QColor, QPalette
+
+    palette = QPalette()
+    colours = {
+        QPalette.Window: BG,
+        QPalette.WindowText: TEXT,
+        QPalette.Base: PANEL,
+        QPalette.AlternateBase: CARD,
+        QPalette.ToolTipBase: CARD,
+        QPalette.ToolTipText: TEXT,
+        QPalette.Text: TEXT,
+        QPalette.Button: CARD,
+        QPalette.ButtonText: TEXT,
+        QPalette.BrightText: "#ffffff",
+        QPalette.Link: ACCENT,
+        QPalette.Highlight: ACCENT_DIM,
+        QPalette.HighlightedText: "#eef6f3",
+        QPalette.PlaceholderText: MUTED,
+    }
+    for role, value in colours.items():
+        palette.setColor(role, QColor(value))
+    for role in (QPalette.WindowText, QPalette.Text, QPalette.ButtonText):
+        palette.setColor(QPalette.Disabled, role, QColor("#5b6272"))
+    return palette
+
+
 QSS = f"""
 * {{ font-family: "Inter", "Noto Sans", "DejaVu Sans", "SF Pro Text", "Segoe UI", sans-serif; font-size: 13px; }}
 QMainWindow, QDialog, QWidget#root {{ background: {BG}; }}
@@ -55,6 +88,10 @@ QComboBox::down-arrow:on {{ border-top: 5px solid {ACCENT}; }}
 QComboBox QAbstractItemView {{ background: {CARD}; border: 1px solid {BORDER}; padding: 4px; outline: none;
   selection-background-color: {ACCENT_DIM}; selection-color: {TEXT}; }}
 QComboBox QAbstractItemView::item {{ padding: 5px 8px; min-height: 20px; border-radius: 4px; }}
+/* контейнер попапа: без этого вокруг списка видны светлые полосы */
+QComboBox QFrame {{ background-color: {CARD}; border: none; }}
+QComboBoxPrivateContainer {{ background-color: {CARD}; border: 1px solid {BORDER}; }}
+QListView {{ background-color: {CARD}; border: none; outline: none; }}
 
 QTableWidget {{ background: {PANEL}; border: 1px solid {BORDER}; border-radius: 8px; gridline-color: {BORDER}; selection-background-color: {CARD}; selection-color: {TEXT}; }}
 QHeaderView::section {{ background: {PANEL}; color: {MUTED}; font-weight: 600; border: none; border-bottom: 1px solid {BORDER}; padding: 6px; font-size: 11px; text-transform: uppercase; }}
