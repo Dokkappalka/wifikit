@@ -75,16 +75,6 @@ class NoAdviceTest(unittest.TestCase):
         self.assertNotIn('"diag"', pages)
 
 
-class SafeModeTest(unittest.TestCase):
-    def test_rules(self):
-        from app.safe import decide_safe_mode
-
-        self.assertTrue(decide_safe_mode("1", False))
-        self.assertFalse(decide_safe_mode("0", True))
-        self.assertTrue(decide_safe_mode(None, True))
-        self.assertFalse(decide_safe_mode(None, False))
-
-
 class StylingTest(unittest.TestCase):
     def test_dark_palette_defined_and_applied(self):
         theme = (APP / "theme.py").read_text()
@@ -95,9 +85,19 @@ class StylingTest(unittest.TestCase):
     def test_fusion_style(self):
         self.assertIn('app.setStyle("Fusion")', (APP / "main.py").read_text())
 
-    def test_plain_mode_switch(self):
-        """WIFIKIT_PLAIN=1 — запуск без QSS: так локализуется падение в стилях."""
-        self.assertIn("WIFIKIT_PLAIN", (APP / "main.py").read_text())
+    def test_combo_uses_native_arrow(self):
+        theme = (APP / "theme.py").read_text()
+        self.assertNotIn("::down-arrow", theme, "штатные стрелки вместо самодельных треугольников")
+
+    def test_dialogs_reject_connected(self):
+        text = (APP / "dialogs.py").read_text()
+        self.assertIn("box.rejected.connect(self.reject)", text)
+        self.assertIn("button_box.rejected.connect(self.reject)", text)
+
+    def test_projects_use_user_home(self):
+        main = (APP / "main.py").read_text()
+        self.assertIn("Path.home() / \"wifikit-projects\"", main)
+        self.assertIn("base=str(self.projects_root())", main)
 
     def test_combo_popup_not_white(self):
         theme = (APP / "theme.py").read_text()

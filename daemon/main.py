@@ -93,7 +93,7 @@ def main(argv: list[str] | None = None) -> int:
     owner = args.owner if args.owner is not None else os.geteuid()
     group = args.group if args.group is not None else (args.owner if args.owner is not None else os.getegid())
 
-    session = Session()
+    session = Session(owner_uid=owner)
     router = rpc.Router(session)
     stop_event = threading.Event()
 

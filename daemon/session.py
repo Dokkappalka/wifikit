@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+import os
 import tempfile
 import threading
 import time
@@ -27,7 +28,8 @@ PENDING_FILE = "pending_rollback.json"
 
 
 class Session:
-    def __init__(self) -> None:
+    def __init__(self, owner_uid: int | None = None) -> None:
+        self.owner_uid = owner_uid
         self.lock = threading.RLock()
         self.jobs = JobRegistry()
         self.project: project_mod.Project | None = None
@@ -397,9 +399,23 @@ class Session:
         return res
 
     # ---------------------------------------------------------------- project
-    def project_new(self, name: str) -> dict:
+    def _claim(self, path: Path) -> None:
+        """Отдать каталог пользователю GUI: демон работает от root и иначе всё root-овое."""
+        if self.owner_uid is None:
+            return
+        for item in [path, *path.rglob("*")]:
+            try:
+                os.chown(item, self.owner_uid, self.owner_uid)
+            except OSError:
+                continue
+
+    def project_new(self, name: str, base: str | None = None) -> dict:
         self._reset_runtime()
-        self.project = project_mod.new(name)
+        root = Path(base).expanduser() if base else None
+        self.project = project_mod.new(name, base=root)
+        self._claim(self.project.path)
+        self.project.save()
+        self._claim(self.project.path)
         return self.project.summary()
 
     def project_open(self, path: str) -> dict:
@@ -409,8 +425,9 @@ class Session:
         self.ap_iface = self.project.ap_iface
         return self.project.summary()
 
-    def project_list(self) -> dict:
-        return {"projects": project_mod.list_projects()}
+    def project_list(self, base: str | None = None) -> dict:
+        root = Path(base).expanduser() if base else None
+        return {"projects": project_mod.list_projects(base=root)}
 
     def project_get(self) -> dict:
         return self.project.as_dict() if self.project else {"name": None}
@@ -428,6 +445,7 @@ class Session:
             "попыток ввода в портале": str(len(self.portal.submissions) if self.portal else 0),
         }
         path = report.export(project, fmt, extra)
+        self._claim(project.path)
         return {"path": str(path)}
 
     def _reset_runtime(self) -> None:

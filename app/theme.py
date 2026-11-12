@@ -55,8 +55,6 @@ QFrame#sidebar {{ background: {PANEL}; border-right: 1px solid {BORDER}; }}
 QFrame#topbar {{ background: {PANEL}; border-bottom: 1px solid {BORDER}; }}
 QStatusBar {{ background: {PANEL}; border-top: 1px solid {BORDER}; }}
 QStatusBar QLabel {{ color: #b6bdcb; padding-left: 8px; font-size: 12px; }}
-QPushButton#link {{ background: transparent; border: none; color: {MUTED}; padding: 2px 6px; }}
-QPushButton#link:hover {{ color: {TEXT}; }}
 QLabel#brand {{ font-size: 15px; font-weight: 600; letter-spacing: .04em; }}
 QLabel#muted, QLabel.muted {{ color: {MUTED}; }}
 QLabel:disabled {{ color: #5b6272; }}
@@ -80,11 +78,8 @@ QPushButton#nav:checked {{ color: {TEXT}; border-left: 3px solid {ACCENT}; backg
 
 QLineEdit, QComboBox, QSpinBox, QPlainTextEdit {{ background: {PANEL}; border: 1px solid {BORDER}; border-radius: 6px; padding: 6px 8px; selection-background-color: {ACCENT_DIM}; }}
 QLineEdit:focus, QComboBox:focus, QSpinBox:focus {{ border-color: {ACCENT_DIM}; }}
-QComboBox {{ padding: 5px 26px 5px 9px; min-height: 20px; }}
-QComboBox::drop-down {{ subcontrol-origin: padding; subcontrol-position: center right; width: 20px; border: none; background: transparent; }}
-QComboBox::down-arrow {{ image: none; width: 0; height: 0;
-  border-left: 4px solid transparent; border-right: 4px solid transparent; border-top: 5px solid {MUTED}; }}
-QComboBox::down-arrow:on {{ border-top: 5px solid {ACCENT}; }}
+QComboBox {{ padding: 5px 22px 5px 9px; min-height: 20px; }}
+QComboBox::drop-down {{ subcontrol-origin: padding; subcontrol-position: center right; width: 18px; border: none; background: transparent; }}
 QComboBox QAbstractItemView {{ background: {CARD}; border: 1px solid {BORDER}; padding: 4px; outline: none;
   selection-background-color: {ACCENT_DIM}; selection-color: {TEXT}; }}
 QComboBox QAbstractItemView::item {{ padding: 5px 8px; min-height: 20px; border-radius: 4px; }}
@@ -110,16 +105,10 @@ QPlainTextEdit#console {{ font-family: "JetBrains Mono", Menlo, monospace; font-
 QToolTip {{ background: {CARD}; color: {TEXT}; border: 1px solid {BORDER}; padding: 4px; }}
 QTableWidget QComboBox, QTableWidget QLineEdit {{ padding: 3px 6px; margin: 3px; min-height: 22px; }}
 QTableWidget QComboBox QAbstractItemView {{ padding: 0; }}
-QFrame#banner {{ background: {CARD}; border: 1px solid {BORDER}; border-radius: 8px; }}
-QLabel#banner_title {{ font-size: 13px; font-weight: 600; }}
 QLabel#badge {{ border: 1px solid {BORDER}; border-radius: 4px; padding: 1px 5px; font-size: 10px; color: {MUTED}; text-transform: uppercase; }}
 QLabel#badge_ok {{ border: 1px solid {ACCENT_DIM}; border-radius: 4px; padding: 1px 5px; font-size: 10px; color: {ACCENT}; }}
 QLabel#badge_warn {{ border: 1px solid {WARN}; border-radius: 4px; padding: 1px 5px; font-size: 10px; color: {WARN}; }}
 QLabel#badge_bad {{ border: 1px solid {DANGER}; border-radius: 4px; padding: 1px 5px; font-size: 10px; color: {DANGER}; }}
 
 QSpinBox::up-button, QSpinBox::down-button {{ width: 14px; background: {CARD}; border: 1px solid {BORDER}; border-radius: 3px; margin: 1px; }}
-QSpinBox::up-arrow {{ image: none; border-left: 3px solid transparent; border-right: 3px solid transparent; border-bottom: 4px solid {MUTED}; width: 0; height: 0; }}
-QSpinBox::down-arrow {{ image: none; border-left: 3px solid transparent; border-right: 3px solid transparent; border-top: 4px solid {MUTED}; width: 0; height: 0; }}
-QComboBox QAbstractItemView::item {{ padding: 5px 8px; }}
-QLabel#placeholder {{ color: {MUTED}; font-size: 12px; }}
 """

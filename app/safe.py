@@ -40,54 +40,6 @@ def log_exception(text: str) -> None:
         pass
 
 
-def _session_file() -> Path:
-    return gui_log_path().parent / "session.json"
-
-
-def mark_running() -> None:
-    """Отметка «запуск начался»: если её не снять при выходе, прошлый запуск упал."""
-    import json
-    import time
-
-    try:
-        _session_file().write_text(json.dumps({"started": time.time(), "clean": False}))
-    except OSError:
-        pass
-
-
-def mark_clean() -> None:
-    import json
-
-    try:
-        _session_file().write_text(json.dumps({"clean": True}))
-    except OSError:
-        pass
-
-
-def previous_crash() -> bool:
-    """True, если прошлый запуск не завершился штатно (нативное падение)."""
-    import json
-
-    try:
-        data = json.loads(_session_file().read_text())
-    except (OSError, ValueError):
-        return False
-    return not data.get("clean", True)
-
-
-def decide_safe_mode(forced: str | None, crashed_before: bool) -> bool:
-    """Нужно ли стартовать без QSS.
-
-    forced="1" — да, "0" — нет, не задано — да только после нативного падения.
-    Вынесено отдельно, чтобы это правило было покрыто тестом.
-    """
-    if forced == "1":
-        return True
-    if forced == "0":
-        return False
-    return bool(crashed_before)
-
-
 def report(owner, message: str, detail: str = "") -> None:
     """Показать ошибку так, как умеет owner: панель или обычный диалог."""
     notify = getattr(owner, "notify_error", None)

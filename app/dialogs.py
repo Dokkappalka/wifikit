@@ -57,6 +57,7 @@ class ErrorDialog(QDialog):
         ok = button_box.addButton("Понятно", QDialogButtonBox.AcceptRole)
         ok.setObjectName("primary")
         ok.clicked.connect(self.accept)
+        button_box.rejected.connect(self.reject)
         if detail.strip():
             toggle = QPushButton("Скрыть подробности")
             state = {"shown": True}
@@ -113,6 +114,7 @@ class TextDialog(QDialog):
         ok.setDefault(True)
         ok.clicked.connect(self.accept)
         box.addButton("Отмена", QDialogButtonBox.RejectRole)
+        box.rejected.connect(self.reject)
         root.addWidget(box)
         self.edit.returnPressed.connect(self.accept)
 

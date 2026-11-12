@@ -19,8 +19,7 @@ from app import i18n
 from app.dialogs import ErrorDialog, TextDialog
 from app.pages import PAGES, CapturePage, EvilPage, LogPage, State
 from app.remote import Remote, Task
-from app.safe import (decide_safe_mode, expect_dict, gui_log_path, install_hooks, mark_clean,
-                      mark_running, previous_crash, safe_callback, safe_slot)
+from app.safe import expect_dict, gui_log_path, install_hooks, safe_callback, safe_slot
 from app.theme import QSS, dark_palette
 
 VERSION = "0.1.0"
@@ -178,7 +177,7 @@ class MainWindow(QMainWindow):
             signal.connect(slot, Qt.AutoConnection)
 
     def _connect(self) -> None:
-        self._log(f"wifikit {VERSION} · подключаюсь к демону (pkexec спросит пароль)…")
+        self._log("подключение к демону")
         import threading
 
         threading.Thread(target=self.remote.open_link, daemon=True).start()
@@ -329,14 +328,19 @@ class MainWindow(QMainWindow):
         name = dialog.value()
         if not name:
             return
-        task = Task(self.remote, "project_new", name=name)
+        task = Task(self.remote, "project_new", name=name, base=str(self.projects_root()))
         task.done.connect(safe_callback(self, "project_new", self._project_ready))
         task.failed.connect(safe_callback(self, "project_new:fail", self.show_error))
         task.start()
 
+    @staticmethod
+    def projects_root() -> Path:
+        return Path.home() / "wifikit-projects"
+
     @safe_slot
     def _open_project(self) -> None:
-        base = Path.home() / "wifikit-projects"
+        base = self.projects_root()
+        base.mkdir(parents=True, exist_ok=True)
         path = QFileDialog.getExistingDirectory(self, i18n.t("project.open"), str(base))
         if not path:
             return
@@ -352,9 +356,14 @@ class MainWindow(QMainWindow):
             return
         self.lbl_project.setText(data.get("name") or "")
         target = data.get("target") or {}
-        self.lbl_target.setText(target.get("ssid") or "")
+        path = data.get("path") or ""
+        self.lbl_target.setText(target.get("ssid") or path)
+        self.lbl_target.setToolTip(path)
         self._load_adapters()
-        self._log(f"проект: {data.get('path')}")
+        self._show("scan")
+        self.status_text.setText(f"проект: {path}")
+        self._log(f"проект: {path}")
+        self.pages["scan"].status.setText(f"проект: {path}")
 
     @safe_slot
     def _report(self) -> None:
@@ -417,29 +426,10 @@ def main() -> int:
     font.setFamilies(["Inter", "Noto Sans", "DejaVu Sans"])
     font.setPointSize(10)
     app.setFont(font)
-    # WIFIKIT_PLAIN=1 — принудительно без стилей, =0 — принудительно со стилями,
-    # не задано — без стилей только если прошлый запуск упал нативно
-    forced = os.environ.get("WIFIKIT_PLAIN")
-    crashed_before = previous_crash()
-    safe_mode = decide_safe_mode(forced, crashed_before)
-    if not safe_mode:
-        app.setStyleSheet(QSS)
-    mark_running()
+    app.setStyleSheet(QSS)
     window = MainWindow()
     window.show()
-    if safe_mode and forced is None:
-        window.notify_error(
-            "Прошлый запуск завершился падением",
-            "Стили отключены, чтобы приложение осталось рабочим (Fusion + тёмная палитра).\n\n"
-            "Вернуть оформление: запустить WIFIKIT_PLAIN=0 wifikit.\n"
-            "Если после этого снова упадёт — пришлите ~/.local/state/wifikit/gui.log "
-            "и отчёт wifikit-crash.",
-            kind="warn",
-            subtitle="Безопасный режим",
-        )
-    code = app.exec()
-    mark_clean()
-    return code
+    return app.exec()
 
 
 if __name__ == "__main__":
