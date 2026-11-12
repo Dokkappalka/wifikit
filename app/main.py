@@ -8,13 +8,16 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from PySide6.QtCore import Qt, QTimer
+from PySide6.QtGui import QFont
 from PySide6.QtWidgets import (QApplication, QComboBox, QFileDialog, QFrame, QHBoxLayout,
-                               QInputDialog, QLabel, QMainWindow, QMessageBox, QPushButton,
-                               QScrollArea, QSplitter, QStackedWidget, QVBoxLayout, QWidget)
+                               QInputDialog, QLabel, QMainWindow, QPushButton,
+                               QSplitter, QStackedWidget, QVBoxLayout, QWidget)
 
 from app import i18n
+from app.banner import Banner
 from app.pages import PAGES, CapturePage, EvilPage, LogPage, ScanPage, State
 from app.remote import Remote, Task
+from app.safe import expect_dict, install_hooks, safe_callback, safe_slot
 from app.theme import QSS
 
 VERSION = "0.1.0"
@@ -28,6 +31,7 @@ class MainWindow(QMainWindow):
         self._safe_connect(self.remote.failed, self._conn_failed)
         self.state = State()
         self.pages: dict[str, QWidget] = {}
+        self._initialized = False
         self.lang = "ru"
         self.setWindowTitle("wifikit")
         self.resize(1180, 760)
@@ -82,6 +86,12 @@ class MainWindow(QMainWindow):
         self.btn_lang.clicked.connect(self._toggle_lang)
         bar.addWidget(self.btn_lang)
         outer.addWidget(top)
+
+        self.banner = Banner()
+        banner_wrap = QHBoxLayout()
+        banner_wrap.setContentsMargins(16, 8, 16, 0)
+        banner_wrap.addWidget(self.banner)
+        outer.addLayout(banner_wrap)
 
         body = QHBoxLayout()
         body.setContentsMargins(0, 0, 0, 0)
@@ -140,7 +150,7 @@ class MainWindow(QMainWindow):
 
         self.setCentralWidget(root)
         self.pages["scan"].target_changed.connect(self._on_target)  # type: ignore[attr-defined]
-        self._show("diag")
+        self._show("scan")
 
     # ------------------------------------------------------------------- conn
     @staticmethod
@@ -158,15 +168,27 @@ class MainWindow(QMainWindow):
 
         threading.Thread(target=self.remote.open_link, daemon=True).start()
 
+    @safe_slot
     def _conn_failed(self, message: str, detail: str) -> None:
         self._log(f"{message}: {detail}")
-        self.lbl_project.setText(message)
-        if not getattr(self, "_conn_error_shown", False):
-            self._conn_error_shown = True
-            self.show_error(message, detail)
+        self.lbl_project.setText("демон: нет связи")
+        self._set_offline(True)
+        self.notify_error(
+            "Демон не подключён — интерфейс работает, команды недоступны",
+            detail,
+            subtitle="Введите пароль в запросе polkit. Если окна не было — запустите: sudo /usr/lib/wifikit/daemon.py",
+            action=("Подключиться заново", self._retry_connect),
+        )
         # одна автоматическая попытка переподключения, чтобы не дёргать пользователя
         if not self.retry_timer.isActive():
             self.retry_timer.start()
+
+    def _set_offline(self, offline: bool) -> None:
+        """Пока демона нет — кнопки действий выключены, чтобы не врать пользователю."""
+        page = self.pages.get("scan")
+        button = getattr(page, "btn", None)
+        if button is not None:
+            button.setEnabled(not offline)
 
     def _retry_connect(self) -> None:
         if self.remote.is_connected():
@@ -174,10 +196,31 @@ class MainWindow(QMainWindow):
         self._log("повторная попытка подключиться к демону…")
         self._connect()
 
+    @safe_slot
     def _after_connect(self) -> None:
         self._log("связь есть")
+        self.banner.hide_banner()
+        self.lbl_project.setText("демон подключён")
+        self._set_offline(False)
         self._load_adapters()
-        self.pages["diag"].refresh()  # type: ignore[attr-defined]
+        self.call("deps_check", self._deps_ready)
+
+    @safe_slot
+    def _deps_ready(self, data: dict) -> None:
+        data = expect_dict(self, "deps_check", data)
+        if data is None:
+            return
+        missing = data.get("missing") or []
+        if not missing:
+            return
+        lines = [f"{d['binary']}\t{d.get('version') or ''}\t{d.get('note') or ''}"
+                 for d in data.get("deps", []) if not d.get("ok")]
+        self.notify_error(
+            f"Не хватает {len(missing)} инструмент(ов): {', '.join(missing)}",
+            "\n".join(lines),
+            kind="warn",
+            subtitle="Часть функций будет недоступна. Установить: sudo packaging/install.sh",
+        )
 
     # ------------------------------------------------------------------ pages
     def _show(self, key: str) -> None:
@@ -198,11 +241,12 @@ class MainWindow(QMainWindow):
         holder: dict[str, dict] = {}
 
         def collect(name: str):
-            def _apply(data: dict) -> None:
-                holder[name] = data
+            def _apply(data) -> None:
+                if isinstance(data, dict):
+                    holder[name] = data
                 if len(holder) == 2:
                     evil.update_status(holder.get("ap", {}), holder.get("portal", {}))
-            return _apply
+            return safe_callback(self, f"tick:{name}", _apply)
 
         tasks[0].done.connect(collect("ap"))
         tasks[1].done.connect(collect("portal"))
@@ -213,6 +257,7 @@ class MainWindow(QMainWindow):
             if page and self.stack.currentWidget() is page:
                 page.refresh()  # type: ignore[attr-defined]
 
+    @safe_slot
     def _on_target(self, ap: dict) -> None:
         self.state.target = ap
         self.lbl_target.setText(f"{ap['ssid'] or ap['bssid']} · {ap['bssid']}")
@@ -228,7 +273,11 @@ class MainWindow(QMainWindow):
         task.failed.connect(lambda m, d: self._log(f"{m}: {d}"))
         task.start()
 
+    @safe_slot
     def _fill_adapters(self, data: dict) -> None:
+        data = expect_dict(self, "adapters_list", data)
+        if data is None:
+            return
         for combo, role in ((self.combo_probe, "probe"), (self.combo_ap, "ap")):
             combo.blockSignals(True)
             combo.clear()
@@ -278,7 +327,11 @@ class MainWindow(QMainWindow):
         task.failed.connect(lambda m, d: self.show_error(m, d))
         task.start()
 
+    @safe_slot
     def _project_ready(self, data: dict) -> None:
+        data = expect_dict(self, "project", data)
+        if data is None:
+            return
         self.lbl_project.setText(data.get("name") or "")
         target = data.get("target") or {}
         self.lbl_target.setText(target.get("ssid") or "")
@@ -292,21 +345,19 @@ class MainWindow(QMainWindow):
         task.start()
 
     # ------------------------------------------------------------------- misc
+    @safe_slot
     def _toggle_lang(self) -> None:
         self.lang = "en" if self.lang == "ru" else "ru"
         i18n.set_lang(self.lang)
         self.btn_lang.setText("ru" if self.lang == "en" else "en")
         self._log("язык переключён — перезапустите, чтобы применить ко всем надписям")
 
+    def notify_error(self, message: str, detail: str = "", kind: str = "error",
+                     subtitle: str = "", action=None) -> None:
+        self.banner.notify(message, detail, kind=kind, subtitle=subtitle, action=action)
+
     def show_error(self, message: str, detail: str = "") -> None:
-        box = QMessageBox(self)
-        box.setIcon(QMessageBox.Warning)
-        box.setWindowTitle(i18n.t("err.title"))
-        box.setText(message)
-        if detail:
-            box.setDetailedText(detail)
-        box.setAttribute(Qt.WA_DeleteOnClose)
-        box.open()
+        self.notify_error(message, detail)
 
     def _log(self, line: str) -> None:
         if hasattr(self, "logbox"):
@@ -320,9 +371,14 @@ class MainWindow(QMainWindow):
 
 
 def main() -> int:
+    install_hooks()
     i18n.set_lang("ru")
     app = QApplication(sys.argv)
     app.setApplicationName("wifikit")
+    font = QFont()
+    font.setFamilies(["Inter", "Noto Sans", "DejaVu Sans"])
+    font.setPointSize(10)
+    app.setFont(font)
     app.setStyleSheet(QSS)
     window = MainWindow()
     window.show()

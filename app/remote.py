@@ -71,7 +71,8 @@ class Remote(QObject):
             self.socket_file.parent.mkdir(parents=True, exist_ok=True)
         except OSError:
             pass
-        self._spawn_daemon()
+        if os.environ.get("WIFIKIT_SKIP_SPAWN") != "1":
+            self._spawn_daemon()
         deadline = time.monotonic() + timeout
         last = ""
         while time.monotonic() < deadline:

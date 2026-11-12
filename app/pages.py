@@ -8,12 +8,13 @@ from pathlib import Path
 from PySide6.QtCore import Qt, QTimer, QUrl, Signal
 from PySide6.QtGui import QDesktopServices, QFont
 from PySide6.QtWidgets import (QCheckBox, QComboBox, QFileDialog, QFrame, QGridLayout,
-                               QHBoxLayout, QHeaderView, QLabel, QLineEdit, QMessageBox,
+                               QHBoxLayout, QHeaderView, QLabel, QLineEdit,
                                QPlainTextEdit, QProgressBar, QPushButton, QSpinBox,
                                QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget)
 
 from app import i18n
 from app.positions import PositionsEditor
+from app.safe import expect_dict, safe_callback, safe_slot
 from app.remote import Remote, Task
 from app.theme import ACCENT, DANGER, MUTED, WARN
 
@@ -66,97 +67,28 @@ class Page(QWidget):
         self.state = state
 
     def call(self, method: str, on_done=None, on_fail=None, **params) -> Task:
+        """Все ответы демона проходят через защищённые обёртки.
+
+        Исключение внутри слота в PySide6 валит процесс, поэтому обработчик
+        не должен бросать ничего наружу — ни из-за данных, ни из-за логики.
+        """
         task = Task(self.remote, method, **params)
         if on_done:
-            task.done.connect(on_done)
-        task.failed.connect(on_fail or self.show_error)
+            task.done.connect(safe_callback(self, method, on_done))
+        task.failed.connect(safe_callback(self, f"{method}:fail", on_fail or self.show_error))
         return task.start()
 
     def show_error(self, message: str, detail: str = "") -> None:
-        box = QMessageBox(self)
-        box.setIcon(QMessageBox.Warning)
-        box.setWindowTitle(i18n.t("err.title"))
-        box.setText(message)
-        if detail:
-            box.setDetailedText(detail)
-        box.setAttribute(Qt.WA_DeleteOnClose)
-        box.open()
+        """Ошибка показывается панелью в окне: модальные диалоги в PySide6 роняли процесс."""
+        window = self.window()
+        notify = getattr(window, "notify_error", None)
+        if callable(notify):
+            notify(message, detail)
+        else:
+            print(f"[error] {message} {detail}")
 
     def refresh(self) -> None:  # переопределяется
         pass
-
-
-# --------------------------------------------------------------------------- diag
-class DiagPage(Page):
-    def __init__(self, remote: Remote, state: State):
-        super().__init__(remote, state)
-        lay = QVBoxLayout(self)
-        lay.setContentsMargins(24, 20, 24, 20)
-        lay.setSpacing(12)
-        lay.addWidget(h1(i18n.t("diag.title")))
-        self.summary = muted("…")
-        lay.addWidget(self.summary)
-        lay.addWidget(h2(i18n.t("diag.deps")))
-        self.deps = QPlainTextEdit()
-        self.deps.setReadOnly(True)
-        self.deps.setFixedHeight(220)
-        self.deps.setObjectName("console")
-        lay.addWidget(self.deps)
-        lay.addWidget(h2(i18n.t("diag.hw")))
-        self.hw = QPlainTextEdit()
-        self.hw.setReadOnly(True)
-        self.hw.setFixedHeight(110)
-        self.hw.setObjectName("console")
-        lay.addWidget(self.hw)
-        row = QHBoxLayout()
-        self.btn_unblock = QPushButton(i18n.t("diag.unblock"))
-        self.btn_unblock.clicked.connect(lambda: self.call("rfkill_unblock", self._unblocked))
-        self.btn_hashcat = QPushButton(i18n.t("diag.hashcat"))
-        self.btn_hashcat.clicked.connect(lambda: self.call("hashcat_devices", self._devices))
-        row.addWidget(self.btn_unblock)
-        row.addWidget(self.btn_hashcat)
-        row.addStretch(1)
-        lay.addLayout(row)
-        lay.addStretch(1)
-
-    def _unblocked(self, data) -> None:
-        self.summary.setText(data.get("out") or "ok")
-
-    def _devices(self, data) -> None:
-        self.hw.setPlainText("\n".join(data.get("summary") or []) or data.get("hint", ""))
-
-    def refresh(self) -> None:
-        self.call("deps_check", self._deps)
-
-    def _deps(self, data: dict) -> None:
-        lines = []
-        for dep in data["deps"]:
-            mark = "ok " if dep["ok"] else "!! "
-            note = f" — {dep['note']}" if dep["note"] else ""
-            lines.append(f"{mark}{dep['binary']:<14}{dep['version'] or '':<10}{note}")
-        self.deps.setPlainText("\n".join(lines))
-        self.summary.setText(i18n.t("diag.all_ok") if data["ok"] else
-                             "не хватает: " + ", ".join(data["missing"]))
-        self.summary.setObjectName("muted" if data["ok"] else "bad")
-        self.summary.setStyleSheet("")
-        self.call("adapters_list", self._adapters)
-
-    def _adapters(self, data: dict) -> None:
-        blocks = []
-        for rec in data.get("recommended", []):
-            blocks.append(f"{rec['usb_id']}  {rec['note']}")
-        blocks.append("")
-        for adapter in data["adapters"]:
-            flags = []
-            if adapter["suitable_probe"]:
-                flags.append("сенсор")
-            if adapter["suitable_ap"]:
-                flags.append("AP")
-            blocks.append(f"{adapter['iface']:<10}{adapter['driver'] or '?':<16}"
-                          f"{' '.join(flags) or 'непригоден'}")
-            for warn in adapter["warnings"]:
-                blocks.append(f"    {warn}")
-        self.hw.setPlainText("\n".join(blocks) or "адаптеров не найдено")
 
 
 # --------------------------------------------------------------------------- scan
@@ -207,8 +139,12 @@ class ScanPage(Page):
         self.show_error(message, detail)
 
     def _done(self, data: dict) -> None:
+        data = expect_dict(self, "scan_start", data)
+        if data is None:
+            self.btn.setEnabled(True)
+            return
         self.btn.setEnabled(True)
-        self.status.setText(f"найдено: {data['count']}")
+        self.status.setText(f"найдено: {data.get('count', 0)}")
         self.state.aps = {ap["bssid"]: ap for ap in data["aps"]}
         self.table.setRowCount(0)
         for ap in data["aps"]:
@@ -344,8 +280,11 @@ class CapturePage(Page):
         self.show_error(message, detail)
 
     def _started(self, data: dict) -> None:
+        data = expect_dict(self, "capture_start", data)
+        if data is None:
+            return
         self.btn_stop.setEnabled(True)
-        self.console.setPlainText("\n".join(data["job"]["argv"]))
+        self.console.setPlainText("\n".join((data.get("job") or {}).get("argv") or []))
         target = self.state.target
         if self.deauth.isChecked() and target:
             self.call("deauth_start", lambda _d: None, bssid=target["bssid"])
@@ -360,8 +299,11 @@ class CapturePage(Page):
         self.call("capture_status", self._status)
 
     def _status(self, data: dict) -> None:
+        data = expect_dict(self, "capture_status", data)
+        if data is None:
+            return
         job = data.get("job")
-        if job and job["state"] in ("starting", "running", "stopping"):
+        if job and job.get("state") in ("starting", "running", "stopping"):
             self.result.setText(f"идёт захват, {data.get('elapsed')} с")
             return
         result = data.get("result")
@@ -495,7 +437,9 @@ class CrackPage(Page):
                   positions=self.positions.positions(), length_min=low, length_max=high)
 
     def _preview_done(self, spec: dict) -> None:
-        self.positions.apply_spec(spec)
+        spec = expect_dict(self, "mask_preview", spec)
+        if spec is not None:
+            self.positions.apply_spec(spec)
 
     def _choose_wordlist(self) -> None:
         path, _ = QFileDialog.getOpenFileName(self, i18n.t("crack.wordlist"), str(Path.home()))
@@ -533,6 +477,9 @@ class CrackPage(Page):
         self.call("crack_status", self._status)
 
     def _status(self, data: dict) -> None:
+        data = expect_dict(self, "crack_status", data)
+        if data is None:
+            return
         job = data.get("job")
         running = bool(data.get("running"))
         self.btn_stop.setEnabled(running)
@@ -615,6 +562,9 @@ class EvilPage(Page):
         self.call("adapters_list", self._check_adapters)
 
     def _check_adapters(self, data: dict) -> None:
+        data = expect_dict(self, "adapters_list", data)
+        if data is None:
+            return
         ok = bool(data.get("probe_iface") and data.get("ap_iface")
                   and data["probe_iface"] != data["ap_iface"])
         self.warn.setText("адаптеры назначены" if ok else i18n.t("evil.need"))
@@ -624,6 +574,9 @@ class EvilPage(Page):
         self.call("portal_templates", self._templates, self.show_error)
 
     def _templates(self, data: dict) -> None:
+        data = expect_dict(self, "portal_templates", data)
+        if data is None:
+            return
         current = self.template.currentData()
         self.template.clear()
         for tpl in data["templates"]:
@@ -663,7 +616,11 @@ class EvilPage(Page):
                   template_id=template, verify=self.verify.isChecked())
 
     def _portal_up(self, data: dict) -> None:
-        self.ap_state.setText(f"точка и портал подняты: {data['template']['name']}")
+        data = expect_dict(self, "portal_start", data)
+        if data is None:
+            return
+        name = (data.get("template") or {}).get("name", "")
+        self.ap_state.setText(f"точка и портал подняты: {name}")
 
     def _drop(self) -> None:
         self.btn_down.setEnabled(False)
@@ -717,7 +674,6 @@ class LogPage(Page):
 
 
 PAGES = {
-    "diag": (DiagPage, i18n.t("nav.diag")),
     "scan": (ScanPage, i18n.t("nav.scan")),
     "capture": (CapturePage, i18n.t("nav.capture")),
     "crack": (CrackPage, i18n.t("nav.crack")),

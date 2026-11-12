@@ -14,7 +14,7 @@ DANGER = "#c9604f"
 WARN = "#c9a04f"
 
 QSS = f"""
-* {{ font-family: "Inter", "SF Pro Text", "Segoe UI", "Noto Sans", sans-serif; font-size: 13px; }}
+* {{ font-family: "Inter", "Noto Sans", "DejaVu Sans", "SF Pro Text", "Segoe UI", sans-serif; font-size: 13px; }}
 QWidget {{ background: {BG}; color: {TEXT}; }}
 QFrame#sidebar {{ background: {PANEL}; border-right: 1px solid {BORDER}; }}
 QLabel#brand {{ font-size: 15px; font-weight: 600; letter-spacing: .04em; }}
@@ -59,6 +59,8 @@ QPlainTextEdit#console {{ font-family: "JetBrains Mono", Menlo, monospace; font-
 QToolTip {{ background: {CARD}; color: {TEXT}; border: 1px solid {BORDER}; padding: 4px; }}
 QTableWidget QComboBox, QTableWidget QLineEdit {{ padding: 3px 6px; margin: 3px; min-height: 22px; }}
 QTableWidget QComboBox QAbstractItemView {{ padding: 0; }}
+QFrame#banner {{ background: {CARD}; border: 1px solid {BORDER}; border-radius: 8px; }}
+QLabel#banner_title {{ font-size: 13px; font-weight: 600; }}
 QLabel#badge {{ border: 1px solid {BORDER}; border-radius: 4px; padding: 1px 5px; font-size: 10px; color: {MUTED}; text-transform: uppercase; }}
 QLabel#badge_ok {{ border: 1px solid {ACCENT_DIM}; border-radius: 4px; padding: 1px 5px; font-size: 10px; color: {ACCENT}; }}
 QLabel#badge_warn {{ border: 1px solid {WARN}; border-radius: 4px; padding: 1px 5px; font-size: 10px; color: {WARN}; }}

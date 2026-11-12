@@ -20,12 +20,6 @@ KNOWN_AP_DRIVERS = {"ath9k_htc", "rt2800usb", "mt76x0u", "mt76x2u", "mt7612u", "
 MULTISTATE_DRIVERS = {"rtw_8821cu", "rtw_8822bu", "rtw_8822cu", "rtw_8852bu", "rtw89_8852bu", "rtw_8852cu"}
 DFS_CHANNELS = set(range(52, 65)) | set(range(100, 145))
 
-RECOMMENDED_CHIPS = [
-    ("0e8d", "7961", "MediaTek MT7921AU (ALFA AWUS036AXML) — в ядре, monitor+AP+инъекция"),
-    ("0bda", "8812", "Realtek RTL8812AU (ALFA AWUS036ACH) — нужен DKMS-драйвер, мощный"),
-    ("0e8d", "7612", "MediaTek MT7612U (ALFA AWUS036ACM) — plug&play"),
-    ("0cf3", "9271", "Atheros AR9271 — только 2.4 ГГц, идеален как AP-адаптер"),
-]
 
 
 @dataclass
@@ -187,17 +181,12 @@ def list_adapters(include_all: bool = False) -> list[Adapter]:
         adapter.ap = "ap" in modes or "ap/vlan" in modes
         adapter.bands = bands or {"2.4"}
         adapter.rfkill_blocked = entry.name in blocked
-        if adapter.driver in MULTISTATE_DRIVERS:
-            adapter.warnings.append(
-                "драйвер rtw88/rtw89 без active monitor — возможны проблемы с инъекцией; "
-                "для Windows-ориентированных карт проверьте usb_modeswitch"
-            )
-        if adapter.driver.startswith("rtw") and not adapter.monitor:
-            adapter.warnings.append("нет monitor-режима в nl80211")
+        if not adapter.monitor:
+            adapter.warnings.append("нет monitor-режима")
+        if not adapter.ap:
+            adapter.warnings.append("нет AP-режима")
         if not adapter.monitor and not adapter.ap:
-            adapter.warnings.append("непригоден: ни monitor, ни AP")
-        if adapter.iface.startswith("wlx") or adapter.usb_id:
-            adapter.warnings.append("имя интерфейса нестабильно — фиксируется при первом запуске проекта")
+            adapter.warnings.append("непригоден для работы")
         if include_all or adapter.monitor or adapter.ap:
             result.append(adapter)
     return result
@@ -251,10 +240,6 @@ def test_injection(iface: str) -> dict:
     text = (res.out + res.err).strip()
     ok = "Injection is working" in text or "Injection is working!" in text
     return {"ok": ok, "output": text[-1500:]}
-
-
-def recomendations() -> list[dict]:
-    return [{"usb_id": f"{v}:{p}", "note": n} for v, p, n in RECOMMENDED_CHIPS]
 
 
 def hw_fingerprint() -> str:

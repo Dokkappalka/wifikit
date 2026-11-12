@@ -31,6 +31,8 @@ def main() -> int:
         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
     )
     time.sleep(2.0)
+    # демон уже поднят этим скриптом: не просим GUI спавнить его через pkexec
+    os.environ["WIFIKIT_SKIP_SPAWN"] = "1"
     app = QApplication(sys.argv)
     from app.theme import QSS
 
@@ -44,7 +46,19 @@ def main() -> int:
         for _ in range(30):
             app.processEvents()
             time.sleep(0.05)
-        for name in ("diag", "scan", "capture", "crack", "evil", "log"):
+        # демон поднят этим же скриптом: интерфейс обязан быть в «связь есть»,
+        # без красной панели и с активным сканом
+        window._tick()
+        for _ in range(20):
+            app.processEvents()
+            time.sleep(0.05)
+        if window.banner.isVisible():
+            problems.append("баннер ошибки висит при живом демоне: " + window.banner.title.text())
+        if not window.pages["scan"].btn.isEnabled():
+            problems.append("«Сканировать» выключена при живом демоне")
+        print(f"связь: banner={window.banner.isVisible()}, scan_enabled={window.pages['scan'].btn.isEnabled()}")
+
+        for name in ("scan", "capture", "crack", "evil", "log"):
             window._show(name)
             if name == "crack":
                 page = window.pages["crack"]
@@ -58,7 +72,7 @@ def main() -> int:
             if not pix.save(str(path)):
                 problems.append(f"не сохранился {path}")
             print(f"{name}: {pix.width()}x{pix.height()} -> {path}")
-        print("страниц обойдено: 6")
+        print(f"страниц обойдено: {len(window.pages)}")
     finally:
         window.close()
         daemon.terminate()

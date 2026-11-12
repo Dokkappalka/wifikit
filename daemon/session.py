@@ -114,7 +114,6 @@ class Session:
         found = [a.summary() for a in adapters_mod.list_adapters(include_all=True)]
         return {
             "adapters": found,
-            "recommended": adapters_mod.recomendations(),
             "probe_iface": self.probe_iface,
             "ap_iface": self.ap_iface,
         }
